@@ -17,23 +17,18 @@ git push origin v0.1.0
 | npm | `@qorechain/pqc` | Create the **`qorechain`** org on npmjs.com (the scope). |
 | crates.io | `qorechain-pqc` | A crates.io account; the name must be free (it is, as of writing). |
 | PyPI | `qorechain-pqc` | A PyPI account; create the project (first upload claims the name). |
-| Maven Central | `network.qorechain:qorechain-pqc` | A **Central Portal** account (central.sonatype.com) **with the `network.qorechain` namespace verified** — see below. |
+| Maven Central | `io.github.qorechain:qorechain-pqc` | A **Central Portal** account (central.sonatype.com) **with the `io.github.qorechain` namespace verified** (via the GitHub org). |
 | Go | `…/qorechain-pqc/go` | None. pkg.go.dev indexes automatically from a `go/vX.Y.Z` tag. |
 
-### Maven Central namespace — pick one before first publish
+### Maven Central namespace — resolved
 
-The Java `groupId` is `network.qorechain`. The Central Portal requires you to
-**prove ownership** of that namespace, by one of:
+The Java `groupId` is **`io.github.qorechain`**, GitHub-verified against the
+`qorechain` org (lowest-friction; no domain ownership needed). The Java *package*
+remains `network.qorechain.pqc` — groupId and package are independent.
 
-- **Domain verification** — add the DNS TXT record Central gives you to the
-  `qorechain.network` domain (the reverse of the groupId). Use this if you own
-  that domain.
-- **Switch to a GitHub-verified groupId** — change the groupId to
-  `io.github.qorechain` (in `java/pom.xml`), which Central verifies automatically
-  against the GitHub org. Lowest-friction if you don't own `qorechain.network`.
-
-> Decision needed: keep `network.qorechain` (verify the domain) or switch to
-> `io.github.qorechain`. Everything else is identical.
+**Published:** `io.github.qorechain:qorechain-pqc:0.1.0` was published to Maven
+Central on 2026-06-26 via `mvn -Prelease deploy` (Central Portal, `autoPublish=true`).
+Releases are immutable — bump the version in `java/pom.xml` for any future change.
 
 ## Repository secrets to add
 

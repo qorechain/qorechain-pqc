@@ -32,7 +32,7 @@ Post-quantum cryptography for [QoreChain](https://github.com/qorechain) — **st
 | Go | `github.com/qorechain/qorechain-pqc/go` | [Cloudflare CIRCL](https://github.com/cloudflare/circl) | ✅ tested |
 | C | `c/` (static lib + header) | [liboqs](https://github.com/open-quantum-safe/liboqs) + OpenSSL | ✅ tested |
 | Python | `qorechain-pqc` (PyPI) | [liboqs-python](https://github.com/open-quantum-safe/liboqs-python) | ✅ tested |
-| Java | `network.qorechain:qorechain-pqc` (Maven) | [Bouncy Castle](https://www.bouncycastle.org/) | ✅ builds in CI |
+| Java | `io.github.qorechain:qorechain-pqc` (Maven Central) | [Bouncy Castle](https://www.bouncycastle.org/) | ✅ published |
 
 ## Consistent API (every language)
 

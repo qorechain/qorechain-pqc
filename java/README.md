@@ -14,7 +14,7 @@ Backed by [Bouncy Castle](https://www.bouncycastle.org/).
 
 ```xml
 <dependency>
-  <groupId>network.qorechain</groupId>
+  <groupId>io.github.qorechain</groupId>
   <artifactId>qorechain-pqc</artifactId>
   <version>0.1.0</version>
 </dependency>
