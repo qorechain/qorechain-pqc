@@ -1,1 +1,1 @@
-{"name":"qorechain-pqc-vectors","type":"module","private":true}
+{"name":"qorechain-pqc-vectors","type":"module","private":true,"dependencies":{"@noble/hashes":"^2.2.0","@noble/post-quantum":"^0.6.1"}}

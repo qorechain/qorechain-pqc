@@ -6,6 +6,7 @@ import java.security.SecureRandom;
 import org.bouncycastle.crypto.AsymmetricCipherKeyPair;
 import org.bouncycastle.crypto.SecretWithEncapsulation;
 import org.bouncycastle.crypto.digests.SHAKEDigest;
+import org.bouncycastle.crypto.params.ParametersWithRandom;
 import org.bouncycastle.pqc.crypto.mldsa.MLDSAKeyGenerationParameters;
 import org.bouncycastle.pqc.crypto.mldsa.MLDSAKeyPairGenerator;
 import org.bouncycastle.pqc.crypto.mldsa.MLDSAParameters;
@@ -63,8 +64,9 @@ public final class Pqc {
     public static byte[] mldsaSign(String level, byte[] secretKey, byte[] message) {
         MLDSAPrivateKeyParameters sk = new MLDSAPrivateKeyParameters(mldsaParams(level), secretKey);
         MLDSASigner signer = new MLDSASigner();
-        signer.init(true, sk);
-        return signer.generateSignature(message);
+        signer.init(true, new ParametersWithRandom(sk, new SecureRandom()));
+        signer.update(message, 0, message.length);
+        return signer.generateSignature();
     }
 
     /** Verify {@code signature} over {@code message} under {@code publicKey}. */
@@ -72,7 +74,8 @@ public final class Pqc {
         MLDSAPublicKeyParameters pk = new MLDSAPublicKeyParameters(mldsaParams(level), publicKey);
         MLDSASigner signer = new MLDSASigner();
         signer.init(false, pk);
-        return signer.verifySignature(message, signature);
+        signer.update(message, 0, message.length);
+        return signer.verifySignature(signature);
     }
 
     // ── ML-KEM (FIPS-203) ────────────────────────────────────────────────────
