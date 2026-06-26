@@ -66,7 +66,11 @@ public final class Pqc {
         MLDSASigner signer = new MLDSASigner();
         signer.init(true, new ParametersWithRandom(sk, new SecureRandom()));
         signer.update(message, 0, message.length);
-        return signer.generateSignature();
+        try {
+            return signer.generateSignature();
+        } catch (org.bouncycastle.crypto.CryptoException e) {
+            throw new IllegalStateException("ML-DSA signing failed", e);
+        }
     }
 
     /** Verify {@code signature} over {@code message} under {@code publicKey}. */
