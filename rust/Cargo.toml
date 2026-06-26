@@ -5,8 +5,13 @@ edition = "2021"
 license = "Apache-2.0"
 description = "QoreChain post-quantum cryptography — FIPS-204 ML-DSA, FIPS-203 ML-KEM, FIPS-202 SHAKE-256, with blockchain helpers. Byte-compatible across JS/Go/Python/Java/C via shared test vectors."
 repository = "https://github.com/qorechain/qorechain-pqc"
+homepage = "https://github.com/qorechain/qorechain-pqc"
+readme = "README.md"
 keywords = ["post-quantum", "ml-dsa", "ml-kem", "fips-204", "qorechain"]
 categories = ["cryptography"]
+# tests/ load shared vectors from ../vectors at runtime (outside the crate),
+# so they are excluded from the published package; CI runs them from the repo.
+exclude = ["tests/"]
 
 [dependencies]
 fips204 = "0.4"     # FIPS-204 ML-DSA (pure Rust, integritychain)

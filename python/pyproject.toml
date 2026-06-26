@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -9,11 +9,21 @@ description = "QoreChain post-quantum cryptography — FIPS-204 ML-DSA, FIPS-203
 readme = "README.md"
 requires-python = ">=3.9"
 license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "QoreChain" }]
 keywords = ["post-quantum", "pqc", "ml-dsa", "ml-kem", "shake256", "fips-204", "qorechain"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Topic :: Security :: Cryptography",
+  "Programming Language :: Python :: 3",
+]
 dependencies = ["liboqs-python>=0.10.0"]
 
 [project.urls]
+Homepage = "https://github.com/qorechain/qorechain-pqc"
 Repository = "https://github.com/qorechain/qorechain-pqc"
+Issues = "https://github.com/qorechain/qorechain-pqc/issues"
 
 [tool.setuptools.packages.find]
 include = ["qorechain_pqc*"]

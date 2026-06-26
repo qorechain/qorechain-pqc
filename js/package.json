@@ -9,10 +9,11 @@
     ".": "./src/index.js"
   },
   "files": [
-    "src"
+    "src",
+    "README.md"
   ],
   "scripts": {
-    "test": "node --test \"test/*.test.mjs\""
+    "test": "node --test"
   },
   "keywords": [
     "post-quantum",
@@ -28,10 +29,18 @@
     "blockchain"
   ],
   "license": "Apache-2.0",
+  "author": "QoreChain",
+  "homepage": "https://github.com/qorechain/qorechain-pqc/tree/main/js#readme",
+  "bugs": {
+    "url": "https://github.com/qorechain/qorechain-pqc/issues"
+  },
   "repository": {
     "type": "git",
-    "url": "https://github.com/qorechain/qorechain-pqc.git",
+    "url": "git+https://github.com/qorechain/qorechain-pqc.git",
     "directory": "js"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "dependencies": {
     "@noble/post-quantum": "^0.6.1",

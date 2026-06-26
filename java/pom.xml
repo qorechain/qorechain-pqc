@@ -16,6 +16,20 @@
     <license><name>Apache-2.0</name><url>https://www.apache.org/licenses/LICENSE-2.0</url></license>
   </licenses>
 
+  <developers>
+    <developer>
+      <name>QoreChain</name>
+      <organization>QoreChain</organization>
+      <organizationUrl>https://github.com/qorechain</organizationUrl>
+    </developer>
+  </developers>
+
+  <scm>
+    <connection>scm:git:https://github.com/qorechain/qorechain-pqc.git</connection>
+    <developerConnection>scm:git:ssh://git@github.com/qorechain/qorechain-pqc.git</developerConnection>
+    <url>https://github.com/qorechain/qorechain-pqc</url>
+  </scm>
+
   <properties>
     <maven.compiler.release>17</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -45,4 +59,68 @@
       </plugin>
     </plugins>
   </build>
+
+  <!--
+    Activate with `mvn -Prelease deploy` to publish to Maven Central via the
+    Sonatype Central Portal. Requires (see PUBLISHING.md):
+      - settings.xml server id "central" with your Central Portal user token
+      - a GPG key; pass -Dgpg.passphrase=... (CI loads it from a secret)
+  -->
+  <profiles>
+    <profile>
+      <id>release</id>
+      <build>
+        <plugins>
+          <!-- attach -sources.jar -->
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-source-plugin</artifactId>
+            <version>3.3.1</version>
+            <executions>
+              <execution>
+                <id>attach-sources</id>
+                <goals><goal>jar-no-fork</goal></goals>
+              </execution>
+            </executions>
+          </plugin>
+          <!-- attach -javadoc.jar -->
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-javadoc-plugin</artifactId>
+            <version>3.7.0</version>
+            <executions>
+              <execution>
+                <id>attach-javadocs</id>
+                <goals><goal>jar</goal></goals>
+              </execution>
+            </executions>
+          </plugin>
+          <!-- GPG-sign all artifacts (required by Central) -->
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-gpg-plugin</artifactId>
+            <version>3.2.4</version>
+            <executions>
+              <execution>
+                <id>sign-artifacts</id>
+                <phase>verify</phase>
+                <goals><goal>sign</goal></goals>
+              </execution>
+            </executions>
+          </plugin>
+          <!-- publish to the Central Portal -->
+          <plugin>
+            <groupId>org.sonatype.central</groupId>
+            <artifactId>central-publishing-maven-plugin</artifactId>
+            <version>0.6.0</version>
+            <extensions>true</extensions>
+            <configuration>
+              <publishingServerId>central</publishingServerId>
+              <autoPublish>true</autoPublish>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>

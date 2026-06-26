@@ -9,10 +9,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 20 }
+        with: { node-version: 22 }
       - name: Regenerate vectors and assert they are committed in sync
         run: |
-          cd scripts && npm install @noble/post-quantum @noble/hashes && cd ..
+          cd scripts && npm install @noble/post-quantum@0.6.1 @noble/hashes@2.2.0 && cd ..
           node scripts/gen-vectors.mjs
           git diff --exit-code vectors/ || (echo "vectors out of sync — run scripts/gen-vectors.mjs and commit"; exit 1)
 
@@ -21,7 +21,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 20 }
+        with: { node-version: 22 }
       - run: cd js && npm install && npm test
 
   rust:
@@ -54,7 +54,9 @@ jobs:
       - name: Build + install liboqs (shared)
         run: |
           sudo apt-get update && sudo apt-get install -y cmake ninja-build libssl-dev
-          git clone --depth 1 --branch 0.12.0 https://github.com/open-quantum-safe/liboqs
+          # Pin liboqs to match the liboqs-python version installed below, so the
+          # Python binding's ctypes wrapper finds every symbol it expects.
+          git clone --depth 1 --branch 0.15.0 https://github.com/open-quantum-safe/liboqs
           cmake -S liboqs -B liboqs/build -GNinja -DBUILD_SHARED_LIBS=ON -DOQS_BUILD_ONLY_LIB=ON
           sudo cmake --build liboqs/build --target install
           sudo ldconfig
@@ -63,6 +65,10 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
       - name: Python binding
+        env:
+          # Use the system liboqs built above (matched version); do not let
+          # liboqs-python download/build its own copy.
+          OQS_INSTALL_PATH: /usr/local
         run: |
-          pip install liboqs-python
+          pip install liboqs-python==0.15.0
           cd python && PYTHONPATH=$PWD python -m unittest discover -s tests
