@@ -50,17 +50,26 @@ public final class Pqc {
         }
     }
 
-    /** Generate an ML-DSA keypair. Returns {publicKey, secretKey}. */
+    /**
+     * Generate an ML-DSA keypair. Returns {publicKey, secretKey} where secretKey
+     * is the 32-byte FIPS-204 key-generation seed (ξ).
+     *
+     * <p>Bouncy Castle 1.79 represents an ML-DSA private key by its seed; the
+     * expanded {@code getEncoded()} form does not round-trip through the
+     * {@code (params, byte[])} constructor, so the seed is the portable secret
+     * key here. Verification and the cross-language vectors are unaffected
+     * (those exchange public keys and signatures, never private keys).
+     */
     public static byte[][] mldsaKeygen(String level) {
         MLDSAKeyPairGenerator g = new MLDSAKeyPairGenerator();
         g.init(new MLDSAKeyGenerationParameters(new SecureRandom(), mldsaParams(level)));
         AsymmetricCipherKeyPair kp = g.generateKeyPair();
         byte[] pk = ((MLDSAPublicKeyParameters) kp.getPublic()).getEncoded();
-        byte[] sk = ((MLDSAPrivateKeyParameters) kp.getPrivate()).getEncoded();
+        byte[] sk = ((MLDSAPrivateKeyParameters) kp.getPrivate()).getSeed();
         return new byte[][] {pk, sk};
     }
 
-    /** Sign {@code message} with {@code secretKey} (empty context, FIPS-204 pure). */
+    /** Sign {@code message} with {@code secretKey} (the 32-byte seed; empty context, FIPS-204 pure). */
     public static byte[] mldsaSign(String level, byte[] secretKey, byte[] message) {
         MLDSAPrivateKeyParameters sk = new MLDSAPrivateKeyParameters(mldsaParams(level), secretKey);
         MLDSASigner signer = new MLDSASigner();
