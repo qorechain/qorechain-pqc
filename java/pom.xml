@@ -117,6 +117,8 @@
             <configuration>
               <publishingServerId>central</publishingServerId>
               <autoPublish>true</autoPublish>
+              <!-- label shown in the Portal's Deployments list (not the artifact name) -->
+              <deploymentName>${project.artifactId}-${project.version}</deploymentName>
             </configuration>
           </plugin>
         </plugins>
