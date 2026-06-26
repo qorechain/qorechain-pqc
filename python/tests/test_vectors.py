@@ -1,5 +1,5 @@
 import json, os, unittest
-import qorechain_pqc as pqc
+import qorpqc as pqc
 
 VDIR = os.path.join(os.path.dirname(__file__), "..", "..", "vectors")
 def load(n): return json.load(open(os.path.join(VDIR, n)))

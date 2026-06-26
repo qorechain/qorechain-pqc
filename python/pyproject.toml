@@ -26,4 +26,4 @@ Repository = "https://github.com/qorechain/qorechain-pqc"
 Issues = "https://github.com/qorechain/qorechain-pqc/issues"
 
 [tool.setuptools.packages.find]
-include = ["qorechain_pqc*"]
+include = ["qorpqc*"]
