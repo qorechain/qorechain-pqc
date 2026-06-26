@@ -1,0 +1,24 @@
+# JS
+node_modules/
+js/node_modules/
+scripts/node_modules/
+*.tgz
+# Rust
+target/
+rust/Cargo.lock
+# Go
+go/vendor/
+# Python
+__pycache__/
+*.egg-info/
+.venv/
+dist/
+build/
+# C
+c/*.o
+c/*.a
+c/test_vectors
+# Java
+java/target/
+# misc
+.DS_Store

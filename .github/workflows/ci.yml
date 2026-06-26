@@ -1,0 +1,68 @@
+name: ci
+on:
+  push: { branches: [main] }
+  pull_request:
+
+jobs:
+  vectors:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - name: Regenerate vectors and assert they are committed in sync
+        run: |
+          cd scripts && npm install @noble/post-quantum @noble/hashes && cd ..
+          node scripts/gen-vectors.mjs
+          git diff --exit-code vectors/ || (echo "vectors out of sync — run scripts/gen-vectors.mjs and commit"; exit 1)
+
+  js:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: cd js && npm install && npm test
+
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cd rust && cargo test --release
+
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: '1.22' }
+      - run: cd go && go test ./...
+
+  java:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - run: cd java && mvn -B test
+
+  liboqs:
+    # C and Python bindings share a built-from-source liboqs (FIPS-204/203).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build + install liboqs (shared)
+        run: |
+          sudo apt-get update && sudo apt-get install -y cmake ninja-build libssl-dev
+          git clone --depth 1 --branch 0.12.0 https://github.com/open-quantum-safe/liboqs
+          cmake -S liboqs -B liboqs/build -GNinja -DBUILD_SHARED_LIBS=ON -DOQS_BUILD_ONLY_LIB=ON
+          sudo cmake --build liboqs/build --target install
+          sudo ldconfig
+      - name: C binding
+        run: cd c && make test
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: Python binding
+        run: |
+          pip install liboqs-python
+          cd python && PYTHONPATH=$PWD python -m unittest discover -s tests

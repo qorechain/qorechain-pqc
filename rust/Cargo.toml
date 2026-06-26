@@ -1,0 +1,18 @@
+[package]
+name = "qorechain-pqc"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "QoreChain post-quantum cryptography — FIPS-204 ML-DSA, FIPS-203 ML-KEM, FIPS-202 SHAKE-256, with blockchain helpers. Byte-compatible across JS/Go/Python/Java/C via shared test vectors."
+repository = "https://github.com/qorechain/qorechain-pqc"
+keywords = ["post-quantum", "ml-dsa", "ml-kem", "fips-204", "qorechain"]
+categories = ["cryptography"]
+
+[dependencies]
+fips204 = "0.4"     # FIPS-204 ML-DSA (pure Rust, integritychain)
+fips203 = "0.4"     # FIPS-203 ML-KEM
+sha3 = "0.10"       # FIPS-202 SHAKE-256
+
+[dev-dependencies]
+serde_json = "1"
+hex = "0.4"

@@ -1,0 +1,43 @@
+{
+  "name": "@qorechain/pqc",
+  "version": "0.1.0",
+  "description": "QoreChain post-quantum cryptography — FIPS-204 ML-DSA, FIPS-203 ML-KEM, FIPS-202 SHAKE-256, with blockchain helpers. Byte-compatible across Rust/Go/Python/Java/C via shared test vectors.",
+  "type": "module",
+  "main": "src/index.js",
+  "types": "src/index.d.ts",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "test": "node --test \"test/*.test.mjs\""
+  },
+  "keywords": [
+    "post-quantum",
+    "pqc",
+    "ml-dsa",
+    "dilithium",
+    "ml-kem",
+    "kyber",
+    "shake256",
+    "fips-204",
+    "fips-203",
+    "qorechain",
+    "blockchain"
+  ],
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/qorechain/qorechain-pqc.git",
+    "directory": "js"
+  },
+  "dependencies": {
+    "@noble/post-quantum": "^0.6.1",
+    "@noble/hashes": "^2.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

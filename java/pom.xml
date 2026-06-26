@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>network.qorechain</groupId>
+  <artifactId>qorechain-pqc</artifactId>
+  <version>0.1.0</version>
+  <packaging>jar</packaging>
+  <name>qorechain-pqc</name>
+  <description>QoreChain post-quantum cryptography — FIPS-204 ML-DSA, FIPS-203 ML-KEM, FIPS-202 SHAKE-256, with blockchain helpers. Byte-compatible across JS/Rust/Go/Python/C via shared test vectors.</description>
+  <url>https://github.com/qorechain/qorechain-pqc</url>
+
+  <licenses>
+    <license><name>Apache-2.0</name><url>https://www.apache.org/licenses/LICENSE-2.0</url></license>
+  </licenses>
+
+  <properties>
+    <maven.compiler.release>17</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+  </properties>
+
+  <dependencies>
+    <!-- Bouncy Castle: FIPS-204 ML-DSA, FIPS-203 ML-KEM, FIPS-202 SHAKE-256 -->
+    <dependency>
+      <groupId>org.bouncycastle</groupId>
+      <artifactId>bcprov-jdk18on</artifactId>
+      <version>1.79</version>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>5.10.2</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.2.5</version>
+      </plugin>
+    </plugins>
+  </build>
+</project>
