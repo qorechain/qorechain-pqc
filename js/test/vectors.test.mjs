@@ -19,6 +19,17 @@ for (const [name, scheme] of [['ml-dsa-44', pqc.mldsa44], ['ml-dsa-65', pqc.mlds
       assert.equal(scheme.verify(hb(c.publicKey), hb(c.message), hb(c.signature)), true);
     }
   });
+
+  // Regression: QoreChain's PQC ante verifier accepts only DETERMINISTIC
+  // (FIPS-204 §3.4) signatures — sign() must reproduce the shared vectors
+  // byte-for-byte, not emit hedged/randomized signatures.
+  test(`${name}: sign() is deterministic and reproduces shared vectors`, () => {
+    for (const c of load(`${name}.json`).cases) {
+      const { secretKey } = scheme.keygen(hb(c.seed));
+      assert.equal(hx(scheme.sign(secretKey, hb(c.message))), c.signature,
+        'sign(secretKey, message) must reproduce the chain-verified deterministic signature');
+    }
+  });
 }
 
 for (const [name, scheme] of [['ml-kem-512', pqc.mlkem512], ['ml-kem-768', pqc.mlkem768], ['ml-kem-1024', pqc.mlkem1024]]) {
@@ -36,6 +47,16 @@ test('shake-256: shared vectors', () => {
     assert.equal(hx(pqc.shake256(hb(c.message), 32)), c.out32);
     assert.equal(hx(pqc.shake256(hb(c.message), 64)), c.out64);
   }
+});
+
+test('mldsa.sign({ hedged: true }): randomized opt-in still verifies', () => {
+  const { publicKey, secretKey } = pqc.mldsa.keygen();
+  const msg = new TextEncoder().encode('hedged-opt-in');
+  const a = pqc.mldsa.sign(secretKey, msg, { hedged: true });
+  const b = pqc.mldsa.sign(secretKey, msg, { hedged: true });
+  assert.notEqual(hx(a), hx(b), 'hedged signatures must be randomized');
+  assert.equal(pqc.mldsa.verify(publicKey, msg, a), true);
+  assert.equal(pqc.mldsa.verify(publicKey, msg, b), true);
 });
 
 test('blockchain helpers: pubkeyHash + hybridSignBytes framing', () => {

@@ -17,8 +17,17 @@ function wrapSig(scheme, name) {
     name,
     // keygen(seed?) -> { publicKey, secretKey }. seed is a 32-byte ML-DSA xi.
     keygen: (seed) => scheme.keygen(seed),
-    // sign(secretKey, message) -> signature  (conventional arg order)
-    sign: (secretKey, message) => scheme.sign(message, secretKey),
+    // sign(secretKey, message, opts?) -> signature  (conventional arg order)
+    //
+    // DETERMINISTIC (FIPS-204 §3.4) by default — same (secretKey, message)
+    // always yields the same signature, matching every other language binding
+    // and the shared /vectors. QoreChain's on-chain PQC verifier accepts ONLY
+    // deterministic signatures, so this default is consensus-critical: do not
+    // change it. Pass { hedged: true } to opt in to randomized signing for
+    // non-chain uses that want side-channel hedging.
+    sign: (secretKey, message, opts = {}) => opts.hedged === true
+      ? scheme.sign(message, secretKey) // noble's default: hedged (random rnd)
+      : scheme.sign(message, secretKey, { extraEntropy: false }),
     // verify(publicKey, message, signature) -> boolean
     verify: (publicKey, message, signature) => scheme.verify(signature, message, publicKey),
   };
@@ -77,4 +86,4 @@ export function batchVerify(scheme, items) {
   return -1;
 }
 
-export const VERSION = '0.1.0';
+export const VERSION = '0.1.1';

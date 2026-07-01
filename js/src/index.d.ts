@@ -1,8 +1,16 @@
 export interface KeyPair { publicKey: Uint8Array; secretKey: Uint8Array; }
+export interface SignOptions {
+  /**
+   * Randomized (hedged) signing per FIPS-204. Default false: signatures are
+   * DETERMINISTIC, as required by QoreChain's on-chain PQC verifier and matched
+   * by the shared cross-language test vectors. Only set true for non-chain uses.
+   */
+  hedged?: boolean;
+}
 export interface SigScheme {
   readonly name: string;
   keygen(seed?: Uint8Array): KeyPair;
-  sign(secretKey: Uint8Array, message: Uint8Array): Uint8Array;
+  sign(secretKey: Uint8Array, message: Uint8Array, opts?: SignOptions): Uint8Array;
   verify(publicKey: Uint8Array, message: Uint8Array, signature: Uint8Array): boolean;
 }
 export interface KemScheme {
