@@ -21,9 +21,9 @@ int main(int argc, char **argv) {
     if (!f) { fprintf(stderr, "cannot open %s\n", path); return 2; }
 
     static char line[40000];
-    static uint8_t a[8192], b[8192], c[16384], ss[64];
+    static uint8_t a[8192], b[8192], c[16384], d[8192], ss[64];
     int total = 0, pass = 0;
-    char kind[16], alg[32], h1[20000], h2[20000], h3[20000];
+    static char kind[16], alg[32], h1[20000], h2[20000], h3[20000], h4[20000];
 
     while (fgets(line, sizeof line, f)) {
         if (line[0] == '\n' || line[0] == '#') continue;
@@ -31,11 +31,21 @@ int main(int argc, char **argv) {
         if (nf < 1) continue;
 
         if (!strcmp(kind, "mldsa")) {
-            sscanf(line, "%15s %31s %19999s %19999s %19999s", kind, alg, h1, h2, h3);
+            /* mldsa <alg> <pk> <msg> <sig> <secretKey> <seed> */
+            sscanf(line, "%15s %31s %19999s %19999s %19999s %19999s", kind, alg, h1, h2, h3, h4);
             upper(alg);
             size_t pkl = unhex(h1, a, sizeof a), ml = unhex(h2, b, sizeof b), sl = unhex(h3, c, sizeof c);
             int r = qpqc_mldsa_verify(alg, a, pkl, b, ml, c, sl);
             total++; if (r == 1) pass++; else fprintf(stderr, "FAIL %s verify\n", alg);
+            /* QoreChain's PQC ante verifier accepts only DETERMINISTIC (FIPS-204
+             * section 3.4) signatures: sign must reproduce the vector byte-for-byte. */
+            size_t skl = unhex(h4, d, sizeof d);
+            uint8_t *sig2 = NULL; size_t sl2 = 0;
+            int rs = qpqc_mldsa_sign(alg, d, skl, b, ml, &sig2, &sl2);
+            total++;
+            if (rs == QPQC_OK && sl2 == sl && memcmp(sig2, c, sl) == 0) pass++;
+            else fprintf(stderr, "FAIL %s deterministic sign\n", alg);
+            if (sig2) qpqc_free(sig2, sl2);
         } else if (!strcmp(kind, "mlkem")) {
             sscanf(line, "%15s %31s %19999s %19999s %19999s", kind, alg, h1, h2, h3);
             upper(alg);
@@ -59,8 +69,8 @@ int main(int argc, char **argv) {
     fclose(f);
 
     /* roundtrip + helper sanity */
-    uint8_t *pk, *sk, *sig, *hb;
-    size_t pkl, skl, sl, hbl;
+    uint8_t *pk, *sk, *sig = NULL, *hb;
+    size_t pkl, skl, sl = 0, hbl;
     int rt = 0;
     if (qpqc_mldsa_keygen(QPQC_MLDSA_DEFAULT, &pk, &pkl, &sk, &skl) == QPQC_OK) {
         uint8_t b0[3] = {1, 2, 3}, au[2] = {9, 9};

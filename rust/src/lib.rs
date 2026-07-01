@@ -69,8 +69,37 @@ pub mod mldsa {
                     Ok((pk.into_bytes().to_vec(), sk.into_bytes().to_vec()))
                 }
 
+                /// Deterministically derive `(public_key, secret_key)` from the
+                /// 32-byte FIPS-204 xi seed — reproduces the shared `/vectors`
+                /// and the other language bindings byte-for-byte.
+                pub fn keygen_from_seed(seed: &[u8; 32]) -> (Vec<u8>, Vec<u8>) {
+                    let (pk, sk) = <scheme::KG as KeyGen>::keygen_from_seed(seed);
+                    (pk.into_bytes().to_vec(), sk.into_bytes().to_vec())
+                }
+
                 /// Sign `message` with `secret_key` (empty context, FIPS-204 pure).
+                ///
+                /// DETERMINISTIC (FIPS-204 §3.4): same `(secret_key, message)`
+                /// always yields the same signature, matching every other
+                /// language binding and the shared `/vectors`. QoreChain's
+                /// on-chain PQC verifier accepts ONLY deterministic signatures,
+                /// so this default is consensus-critical: do not change it.
+                /// Use [`sign_hedged`] for randomized signatures in non-chain
+                /// contexts.
                 pub fn sign(secret_key: &[u8], message: &[u8]) -> Result<Vec<u8>, &'static str> {
+                    let arr: [u8; SECRET_KEY_LEN] =
+                        secret_key.try_into().map_err(|_| "bad secret key length")?;
+                    let sk = scheme::PrivateKey::try_from_bytes(arr).map_err(|_| "bad secret key")?;
+                    // rnd = 32 zero bytes == the FIPS-204 deterministic variant.
+                    let sig = sk
+                        .try_sign_with_seed(&[0u8; 32], message, &[])
+                        .map_err(|_| "sign failed")?;
+                    Ok(sig.to_vec())
+                }
+
+                /// Randomized (hedged) signing per FIPS-204 — NOT accepted by
+                /// QoreChain's on-chain verifier; opt-in for non-chain uses.
+                pub fn sign_hedged(secret_key: &[u8], message: &[u8]) -> Result<Vec<u8>, &'static str> {
                     let arr: [u8; SECRET_KEY_LEN] =
                         secret_key.try_into().map_err(|_| "bad secret key length")?;
                     let sk = scheme::PrivateKey::try_from_bytes(arr).map_err(|_| "bad secret key")?;
@@ -153,4 +182,4 @@ pub mod mlkem {
     pub use ml_kem_1024 as default;
 }
 
-pub const VERSION: &str = "0.1.0";
+pub const VERSION: &str = "0.1.1";

@@ -9,9 +9,13 @@ OQS_CFLAGS := $(shell pkg-config --cflags liboqs 2>/dev/null)
 OQS_LIBS := $(shell pkg-config --libs liboqs 2>/dev/null || echo -loqs)
 CRYPTO_CFLAGS := $(shell pkg-config --cflags libcrypto 2>/dev/null)
 CRYPTO_LIBS := $(shell pkg-config --libs libcrypto 2>/dev/null || echo -lcrypto)
+# Homebrew's liboqs dylib carries an @rpath install name, so embed the libdir
+# as an rpath or the test binary aborts at load on macOS.
+OQS_LIBDIR := $(shell pkg-config --variable=libdir liboqs 2>/dev/null)
+comma := ,
 
 ALL_CFLAGS := $(CFLAGS) $(OQS_CFLAGS) $(CRYPTO_CFLAGS)
-ALL_LIBS := $(OQS_LIBS) $(CRYPTO_LIBS)
+ALL_LIBS := $(OQS_LIBS) $(CRYPTO_LIBS) $(if $(OQS_LIBDIR),-Wl$(comma)-rpath$(comma)$(OQS_LIBDIR))
 
 .PHONY: all test clean lib
 all: test

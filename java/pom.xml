@@ -6,7 +6,7 @@
 
   <groupId>io.github.qorechain</groupId>
   <artifactId>qorechain-pqc</artifactId>
-  <version>0.1.0</version>
+  <version>0.1.1</version>
   <packaging>jar</packaging>
   <name>qorechain-pqc</name>
   <description>QoreChain post-quantum cryptography — FIPS-204 ML-DSA, FIPS-203 ML-KEM, FIPS-202 SHAKE-256, with blockchain helpers. Byte-compatible across JS/Rust/Go/Python/C via shared test vectors.</description>

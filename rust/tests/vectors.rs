@@ -71,3 +71,38 @@ fn roundtrip_and_helpers() {
     let ss2 = qorechain_pqc::mlkem::default::decapsulate(&dk, &ct).unwrap();
     assert_eq!(ss1, ss2);
 }
+
+// QoreChain's PQC ante verifier accepts only DETERMINISTIC (FIPS-204 §3.4)
+// ML-DSA signatures: sign() must reproduce the shared vectors byte-for-byte,
+// and keygen_from_seed must reproduce the vector keypair.
+macro_rules! sig_deterministic_vectors {
+    ($test:ident, $file:expr, $level:path) => {
+        #[test]
+        fn $test() {
+            use $level as s;
+            for c in load($file)["cases"].as_array().unwrap() {
+                let seed: [u8; 32] = hb(c, "seed").try_into().unwrap();
+                let (pk, sk) = s::keygen_from_seed(&seed);
+                assert_eq!(pk, hb(c, "publicKey"), "{} keygen_from_seed pk", $file);
+                assert_eq!(sk, hb(c, "secretKey"), "{} keygen_from_seed sk", $file);
+                let sig = s::sign(&sk, &hb(c, "message")).unwrap();
+                assert_eq!(sig, hb(c, "signature"), "{} sign must be deterministic", $file);
+            }
+        }
+    };
+}
+sig_deterministic_vectors!(ml_dsa_44_sign_deterministic, "ml-dsa-44.json", qorechain_pqc::mldsa::ml_dsa_44);
+sig_deterministic_vectors!(ml_dsa_65_sign_deterministic, "ml-dsa-65.json", qorechain_pqc::mldsa::ml_dsa_65);
+sig_deterministic_vectors!(ml_dsa_87_sign_deterministic, "ml-dsa-87.json", qorechain_pqc::mldsa::ml_dsa_87);
+
+#[test]
+fn sign_hedged_optin_differs_and_verifies() {
+    use qorechain_pqc::mldsa::default as s;
+    let (pk, sk) = s::keygen().unwrap();
+    let msg = b"hedged-opt-in";
+    let a = s::sign_hedged(&sk, msg).unwrap();
+    let b = s::sign_hedged(&sk, msg).unwrap();
+    assert_ne!(a, b, "hedged signatures must be randomized");
+    assert!(s::verify(&pk, msg, &a));
+    assert!(s::verify(&pk, msg, &b));
+}

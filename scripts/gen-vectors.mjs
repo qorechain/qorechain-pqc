@@ -36,8 +36,11 @@ function mldsa(name, scheme) {
     const msg = msgN(i);
     const sig = scheme.sign(msg, secretKey, { extraEntropy: false }); // deterministic (non-hedged)
     if (scheme.verify(sig, msg, publicKey) !== true) throw new Error(`${name} self-verify failed`);
-    cases.push({ seed: hex(seed), publicKey: hex(publicKey), message: hex(msg), signature: hex(sig) });
-    flat.push(`mldsa ${name} ${hex(publicKey)} ${hex(msg)} ${hex(sig)}`);
+    // secretKey (FIPS-204 expanded sk encoding) lets bindings without seeded
+    // keygen (the liboqs-backed C and Python) still vector-test deterministic sign().
+    cases.push({ seed: hex(seed), publicKey: hex(publicKey), secretKey: hex(secretKey), message: hex(msg), signature: hex(sig) });
+    // Trailing fields are ignored by parsers that don't need them: ... <sig> <secretKey> <seed>
+    flat.push(`mldsa ${name} ${hex(publicKey)} ${hex(msg)} ${hex(sig)} ${hex(secretKey)} ${hex(seed)}`);
   }
   return { algorithm: name, fips: 'FIPS-204', sizes: { publicKey: cases[0].publicKey.length / 2, signature: cases[0].signature.length / 2 }, deterministicKeygen: true, cases };
 }

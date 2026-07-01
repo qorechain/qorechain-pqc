@@ -11,6 +11,24 @@ class Vectors(unittest.TestCase):
             s = pqc.MlDsa(lvl)
             for c in load(f"{lvl}.json")["cases"]:
                 self.assertTrue(s.verify(hb(c["publicKey"]), hb(c["message"]), hb(c["signature"])), lvl)
+    def test_mldsa_sign_deterministic(self):
+        # QoreChain's PQC ante verifier accepts only DETERMINISTIC (FIPS-204
+        # §3.4) signatures: sign must reproduce the shared vectors byte-for-byte.
+        for lvl in ("ml-dsa-44", "ml-dsa-65", "ml-dsa-87"):
+            s = pqc.MlDsa(lvl)
+            for c in load(f"{lvl}.json")["cases"]:
+                self.assertEqual(
+                    s.sign(hb(c["secretKey"]), hb(c["message"])).hex(), c["signature"],
+                    f"{lvl}: sign must be deterministic (vector-equal)")
+    def test_mldsa_sign_hedged_optin(self):
+        s = pqc.MlDsa("ml-dsa-87")
+        pk, sk = s.keygen()
+        msg = b"hedged-opt-in"
+        a = s.sign(sk, msg, hedged=True)
+        b = s.sign(sk, msg, hedged=True)
+        self.assertNotEqual(a, b, "hedged signatures must be randomized")
+        self.assertTrue(s.verify(pk, msg, a))
+        self.assertTrue(s.verify(pk, msg, b))
     def test_mlkem(self):
         for lvl in ("ml-kem-512", "ml-kem-768", "ml-kem-1024"):
             k = pqc.MlKem(lvl)

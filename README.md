@@ -38,7 +38,8 @@ Post-quantum cryptography for [QoreChain](https://github.com/qorechain) — **st
 
 ```
 keygen()                              -> (publicKey, secretKey)
-sign(secretKey, message)              -> signature
+keygenFromSeed(seed)                  -> (publicKey, secretKey)   # 32-byte FIPS-204 xi
+sign(secretKey, message)              -> signature                # DETERMINISTIC
 verify(publicKey, message, signature) -> bool
 
 kem.keygen()                          -> (publicKey, secretKey)
@@ -51,6 +52,15 @@ shake256(data, outLen=32)             -> digest
 Blockchain helpers: `pubkeyHash(pk, len=20)` (pay-to-pubkey-hash registration) and
 `hybridSignBytes(bodyWithoutPqcExt, authInfo)` (QoreChain's wallet-compatible
 hybrid-extension sign-bytes framing).
+
+> **`sign` is DETERMINISTIC (FIPS-204 §3.4) in every binding** — the same
+> `(secretKey, message)` always yields the same signature, byte-identical across
+> languages and to the shared `/vectors`. QoreChain's on-chain PQC verifier
+> accepts only deterministic signatures, so this default is consensus-critical.
+> Randomized (hedged) signing is available as an explicit opt-in per binding
+> (`{hedged: true}` / `sign_hedged` / `mldsaSignHedged` / `qpqc_mldsa_sign_hedged`)
+> for non-chain uses. (The liboqs-backed C and Python bindings have no seeded
+> keygen; their vector tests use the expanded `secretKey` field instead.)
 
 ### Quick start
 

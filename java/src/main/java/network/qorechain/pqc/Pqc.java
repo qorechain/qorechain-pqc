@@ -35,7 +35,7 @@ import org.bouncycastle.pqc.crypto.mlkem.MLKEMPublicKeyParameters;
  * against the shared vectors in {@code /vectors}.
  */
 public final class Pqc {
-    public static final String VERSION = "0.1.0";
+    public static final String VERSION = "0.1.1";
 
     private Pqc() {}
 
@@ -69,8 +69,44 @@ public final class Pqc {
         return new byte[][] {pk, sk};
     }
 
-    /** Sign {@code message} with {@code secretKey} (the 32-byte seed; empty context, FIPS-204 pure). */
+    /**
+     * Deterministically derive {publicKey, secretKey} from the 32-byte FIPS-204
+     * key-generation seed (ξ) — reproduces the shared {@code /vectors} and the
+     * other language bindings byte-for-byte. As with {@link #mldsaKeygen}, the
+     * returned secretKey is the seed itself.
+     */
+    public static byte[][] mldsaKeygenFromSeed(String level, byte[] seed) {
+        MLDSAPrivateKeyParameters sk = new MLDSAPrivateKeyParameters(mldsaParams(level), seed);
+        return new byte[][] {sk.getPublicKeyParameters().getEncoded(), sk.getSeed()};
+    }
+
+    /**
+     * Sign {@code message} with {@code secretKey} (the 32-byte seed; empty context, FIPS-204 pure).
+     *
+     * <p>DETERMINISTIC (FIPS-204 §3.4): the same (secretKey, message) always yields
+     * the same signature, matching every other language binding and the shared
+     * {@code /vectors}. QoreChain's on-chain PQC verifier accepts ONLY deterministic
+     * signatures, so this default is consensus-critical: do not change it. Use
+     * {@link #mldsaSignHedged} for randomized signing in non-chain contexts.
+     */
     public static byte[] mldsaSign(String level, byte[] secretKey, byte[] message) {
+        MLDSAPrivateKeyParameters sk = new MLDSAPrivateKeyParameters(mldsaParams(level), secretKey);
+        MLDSASigner signer = new MLDSASigner();
+        // No ParametersWithRandom: Bouncy Castle then signs deterministically.
+        signer.init(true, sk);
+        signer.update(message, 0, message.length);
+        try {
+            return signer.generateSignature();
+        } catch (org.bouncycastle.crypto.CryptoException e) {
+            throw new IllegalStateException("ML-DSA signing failed", e);
+        }
+    }
+
+    /**
+     * Randomized (hedged) signing per FIPS-204 — NOT accepted by QoreChain's
+     * on-chain verifier; opt-in for non-chain uses.
+     */
+    public static byte[] mldsaSignHedged(String level, byte[] secretKey, byte[] message) {
         MLDSAPrivateKeyParameters sk = new MLDSAPrivateKeyParameters(mldsaParams(level), secretKey);
         MLDSASigner signer = new MLDSASigner();
         signer.init(true, new ParametersWithRandom(sk, new SecureRandom()));

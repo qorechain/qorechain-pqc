@@ -52,6 +52,14 @@ class VectorsTest {
                 case "mldsa":
                     assertTrue(Pqc.mldsaVerify(f[1], hex(f[2]), hex(f[3]), hex(f[4])),
                             f[1] + " vector must verify");
+                    // f[5] = expanded secretKey (for the liboqs bindings), f[6] = the
+                    // 32-byte seed (Java's portable secret key). QoreChain's on-chain
+                    // verifier accepts only DETERMINISTIC (FIPS-204 §3.4) signatures:
+                    // keygen and sign must reproduce the vectors byte-for-byte.
+                    byte[][] kp = Pqc.mldsaKeygenFromSeed(f[1], hex(f[6]));
+                    assertArrayEquals(hex(f[2]), kp[0], f[1] + " keygenFromSeed publicKey");
+                    assertArrayEquals(hex(f[4]), Pqc.mldsaSign(f[1], hex(f[6]), hex(f[3])),
+                            f[1] + " sign must be deterministic (vector-equal)");
                     total++;
                     break;
                 case "mlkem":
@@ -70,6 +78,17 @@ class VectorsTest {
             }
         }
         assertTrue(total >= 30, "expected the full vector set");
+    }
+
+    @Test
+    void hedgedOptInDiffersAndVerifies() {
+        byte[][] kp = Pqc.mldsaKeygen("ml-dsa-87");
+        byte[] msg = "hedged-opt-in".getBytes();
+        byte[] a = Pqc.mldsaSignHedged("ml-dsa-87", kp[1], msg);
+        byte[] b = Pqc.mldsaSignHedged("ml-dsa-87", kp[1], msg);
+        assertTrue(!java.util.Arrays.equals(a, b), "hedged signatures must be randomized");
+        assertTrue(Pqc.mldsaVerify("ml-dsa-87", kp[0], msg, a));
+        assertTrue(Pqc.mldsaVerify("ml-dsa-87", kp[0], msg, b));
     }
 
     @Test

@@ -27,9 +27,17 @@ extern "C" {
 /* ML-DSA: generate a keypair. Caller must qpqc_free() the returned buffers. */
 int qpqc_mldsa_keygen(const char *alg, uint8_t **pk, size_t *pk_len, uint8_t **sk, size_t *sk_len);
 
-/* ML-DSA: sign `msg` with `sk`. Caller must qpqc_free() *sig. */
+/* ML-DSA: sign `msg` with `sk`. Caller must qpqc_free() *sig.
+ * DETERMINISTIC (FIPS-204 §3.4): same (sk, msg) always yields the same
+ * signature — required by QoreChain's on-chain PQC verifier and matched by the
+ * shared /vectors. Not thread-safe against concurrent liboqs RNG use (see .c). */
 int qpqc_mldsa_sign(const char *alg, const uint8_t *sk, size_t sk_len,
                     const uint8_t *msg, size_t msg_len, uint8_t **sig, size_t *sig_len);
+
+/* ML-DSA: randomized (hedged) signing — NOT accepted by QoreChain's on-chain
+ * verifier; opt-in for non-chain uses. Caller must qpqc_free() *sig. */
+int qpqc_mldsa_sign_hedged(const char *alg, const uint8_t *sk, size_t sk_len,
+                           const uint8_t *msg, size_t msg_len, uint8_t **sig, size_t *sig_len);
 
 /* ML-DSA: verify. Returns 1 if valid, 0 if invalid, <0 on error. */
 int qpqc_mldsa_verify(const char *alg, const uint8_t *pk, size_t pk_len,

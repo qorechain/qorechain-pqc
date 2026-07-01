@@ -11,6 +11,7 @@ package pqc
 
 import (
 	"encoding/binary"
+	"errors"
 
 	mldsa44 "github.com/cloudflare/circl/sign/mldsa/mldsa44"
 	mldsa65 "github.com/cloudflare/circl/sign/mldsa/mldsa65"
@@ -25,7 +26,7 @@ import (
 	"golang.org/x/crypto/sha3"
 )
 
-const Version = "0.1.0"
+const Version = "0.1.1"
 
 // SigScheme is a unified ML-DSA signature scheme handle.
 type SigScheme struct {
@@ -68,7 +69,23 @@ func (sc SigScheme) Keygen() (pub, sec []byte, err error) {
 	return pub, sec, nil
 }
 
+// KeygenFromSeed deterministically derives (publicKey, secretKey) from the
+// 32-byte FIPS-204 xi seed — reproduces the shared /vectors and the other
+// language bindings byte-for-byte.
+func (sc SigScheme) KeygenFromSeed(seed []byte) (pub, sec []byte, err error) {
+	if len(seed) != sc.s.SeedSize() {
+		return nil, nil, errors.New("pqc: bad seed length")
+	}
+	pk, sk := sc.s.DeriveKey(seed)
+	pub, _ = pk.MarshalBinary()
+	sec, _ = sk.MarshalBinary()
+	return pub, sec, nil
+}
+
 // Sign signs message with secretKey (empty context, FIPS-204 pure).
+// DETERMINISTIC (FIPS-204 section 3.4): same (secretKey, message) always yields
+// the same signature — required by QoreChain's on-chain PQC verifier, and how
+// the shared /vectors are generated.
 func (sc SigScheme) Sign(secretKey, message []byte) ([]byte, error) {
 	sk, err := sc.s.UnmarshalBinaryPrivateKey(secretKey)
 	if err != nil {

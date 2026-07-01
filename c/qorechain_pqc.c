@@ -17,8 +17,36 @@ int qpqc_mldsa_keygen(const char *alg, uint8_t **pk, size_t *pk_len, uint8_t **s
     return rc;
 }
 
+/* liboqs's ML-DSA signs hedged: it draws the 32-byte FIPS-204 `rnd` from
+ * OQS_randombytes. QoreChain's on-chain PQC verifier accepts ONLY the
+ * DETERMINISTIC variant (rnd = 32 zero bytes), matching the shared /vectors
+ * and every other language binding — so qpqc_mldsa_sign routes OQS_randombytes
+ * to a zero filler for the duration of the sign call, then restores the system
+ * RNG. This default is consensus-critical: do not change it.
+ *
+ * NOTE: the RNG switch is process-global in liboqs. Do not run qpqc_mldsa_sign
+ * concurrently with other liboqs operations that need real randomness
+ * (keygen/encapsulate) from other threads. */
+static void qpqc_zero_rng(uint8_t *out, size_t n) { memset(out, 0, n); }
+
 int qpqc_mldsa_sign(const char *alg, const uint8_t *sk, size_t sk_len,
                     const uint8_t *msg, size_t msg_len, uint8_t **sig, size_t *sig_len) {
+    OQS_SIG *s = OQS_SIG_new(alg);
+    if (!s) return QPQC_ERR;
+    if (sk_len != s->length_secret_key) { OQS_SIG_free(s); return QPQC_ERR; }
+    *sig = malloc(s->length_signature);
+    if (!*sig) { OQS_SIG_free(s); return QPQC_ERR; }
+    OQS_randombytes_custom_algorithm(qpqc_zero_rng);
+    int rc = (OQS_SIG_sign(s, *sig, sig_len, msg, msg_len, sk) == OQS_SUCCESS) ? QPQC_OK : QPQC_ERR;
+    OQS_randombytes_switch_algorithm(OQS_RAND_alg_system);
+    OQS_SIG_free(s);
+    return rc;
+}
+
+/* Randomized (hedged) signing per FIPS-204 — NOT accepted by QoreChain's
+ * on-chain verifier; opt-in for non-chain uses. */
+int qpqc_mldsa_sign_hedged(const char *alg, const uint8_t *sk, size_t sk_len,
+                           const uint8_t *msg, size_t msg_len, uint8_t **sig, size_t *sig_len) {
     OQS_SIG *s = OQS_SIG_new(alg);
     if (!s) return QPQC_ERR;
     if (sk_len != s->length_secret_key) { OQS_SIG_free(s); return QPQC_ERR; }

@@ -117,3 +117,54 @@ func TestRoundtripAndHelpers(t *testing.T) {
 		t.Fatal("kem roundtrip mismatch")
 	}
 }
+
+type sigVecFull struct {
+	Cases []struct {
+		Seed      string `json:"seed"`
+		PublicKey string `json:"publicKey"`
+		SecretKey string `json:"secretKey"`
+		Message   string `json:"message"`
+		Signature string `json:"signature"`
+	} `json:"cases"`
+}
+
+// QoreChain's PQC ante verifier accepts only DETERMINISTIC (FIPS-204 section 3.4)
+// ML-DSA signatures: Sign must reproduce the shared vectors byte-for-byte.
+func TestMLDSASignDeterministicVectors(t *testing.T) {
+	for _, tc := range []struct {
+		file string
+		sc   SigScheme
+	}{{"ml-dsa-44.json", MLDSA44}, {"ml-dsa-65.json", MLDSA65}, {"ml-dsa-87.json", MLDSA87}} {
+		var v sigVecFull
+		load(t, tc.file, &v)
+		for i, c := range v.Cases {
+			sig, err := tc.sc.Sign(dh(t, c.SecretKey), dh(t, c.Message))
+			if err != nil {
+				t.Fatalf("%s case %d sign: %v", tc.file, i, err)
+			}
+			if !bytes.Equal(sig, dh(t, c.Signature)) {
+				t.Fatalf("%s case %d: Sign not deterministic-vector-equal", tc.file, i)
+			}
+		}
+	}
+}
+
+// KeygenFromSeed must reproduce the vector publicKey from the 32-byte seed.
+func TestMLDSAKeygenFromSeedVectors(t *testing.T) {
+	for _, tc := range []struct {
+		file string
+		sc   SigScheme
+	}{{"ml-dsa-44.json", MLDSA44}, {"ml-dsa-65.json", MLDSA65}, {"ml-dsa-87.json", MLDSA87}} {
+		var v sigVecFull
+		load(t, tc.file, &v)
+		for i, c := range v.Cases {
+			pub, sec, err := tc.sc.KeygenFromSeed(dh(t, c.Seed))
+			if err != nil {
+				t.Fatalf("%s case %d keygen: %v", tc.file, i, err)
+			}
+			if !bytes.Equal(pub, dh(t, c.PublicKey)) || !bytes.Equal(sec, dh(t, c.SecretKey)) {
+				t.Fatalf("%s case %d: KeygenFromSeed mismatch", tc.file, i)
+			}
+		}
+	}
+}

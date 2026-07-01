@@ -1,6 +1,6 @@
 [package]
 name = "qorechain-pqc"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 license = "Apache-2.0"
 description = "QoreChain post-quantum cryptography — FIPS-204 ML-DSA, FIPS-203 ML-KEM, FIPS-202 SHAKE-256, with blockchain helpers. Byte-compatible across JS/Go/Python/Java/C via shared test vectors."
