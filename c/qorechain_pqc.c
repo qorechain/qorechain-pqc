@@ -2,8 +2,18 @@
 #include "qorechain_pqc.h"
 #include <oqs/oqs.h>
 #include <openssl/evp.h>
+#include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
+
+/* liboqs draws all randomness from one process-global RNG, and the
+ * deterministic sign path below switches that RNG to a zero filler for the
+ * duration of the call. Every operation in this file that needs real
+ * randomness takes the same lock, so a keygen or encapsulation on another
+ * thread cannot land inside that window and draw zeros (which yields a key
+ * anyone can reproduce). The lock covers this binding only: other liboqs
+ * callers in the same process are not protected. */
+static pthread_mutex_t qpqc_rng_lock = PTHREAD_MUTEX_INITIALIZER;
 
 int qpqc_mldsa_keygen(const char *alg, uint8_t **pk, size_t *pk_len, uint8_t **sk, size_t *sk_len) {
     OQS_SIG *s = OQS_SIG_new(alg);
@@ -11,7 +21,9 @@ int qpqc_mldsa_keygen(const char *alg, uint8_t **pk, size_t *pk_len, uint8_t **s
     *pk = malloc(s->length_public_key);
     *sk = malloc(s->length_secret_key);
     if (!*pk || !*sk) { OQS_SIG_free(s); return QPQC_ERR; }
+    pthread_mutex_lock(&qpqc_rng_lock);
     int rc = (OQS_SIG_keypair(s, *pk, *sk) == OQS_SUCCESS) ? QPQC_OK : QPQC_ERR;
+    pthread_mutex_unlock(&qpqc_rng_lock);
     *pk_len = s->length_public_key; *sk_len = s->length_secret_key;
     OQS_SIG_free(s);
     return rc;
@@ -24,9 +36,8 @@ int qpqc_mldsa_keygen(const char *alg, uint8_t **pk, size_t *pk_len, uint8_t **s
  * to a zero filler for the duration of the sign call, then restores the system
  * RNG. This default is consensus-critical: do not change it.
  *
- * NOTE: the RNG switch is process-global in liboqs. Do not run qpqc_mldsa_sign
- * concurrently with other liboqs operations that need real randomness
- * (keygen/encapsulate) from other threads. */
+ * The RNG switch is process-global in liboqs, so this call and every other
+ * randomness consumer in this file serialise on qpqc_rng_lock. */
 static void qpqc_zero_rng(uint8_t *out, size_t n) { memset(out, 0, n); }
 
 int qpqc_mldsa_sign(const char *alg, const uint8_t *sk, size_t sk_len,
@@ -36,9 +47,11 @@ int qpqc_mldsa_sign(const char *alg, const uint8_t *sk, size_t sk_len,
     if (sk_len != s->length_secret_key) { OQS_SIG_free(s); return QPQC_ERR; }
     *sig = malloc(s->length_signature);
     if (!*sig) { OQS_SIG_free(s); return QPQC_ERR; }
+    pthread_mutex_lock(&qpqc_rng_lock);
     OQS_randombytes_custom_algorithm(qpqc_zero_rng);
     int rc = (OQS_SIG_sign(s, *sig, sig_len, msg, msg_len, sk) == OQS_SUCCESS) ? QPQC_OK : QPQC_ERR;
     OQS_randombytes_switch_algorithm(OQS_RAND_alg_system);
+    pthread_mutex_unlock(&qpqc_rng_lock);
     OQS_SIG_free(s);
     return rc;
 }
@@ -52,7 +65,9 @@ int qpqc_mldsa_sign_hedged(const char *alg, const uint8_t *sk, size_t sk_len,
     if (sk_len != s->length_secret_key) { OQS_SIG_free(s); return QPQC_ERR; }
     *sig = malloc(s->length_signature);
     if (!*sig) { OQS_SIG_free(s); return QPQC_ERR; }
+    pthread_mutex_lock(&qpqc_rng_lock);
     int rc = (OQS_SIG_sign(s, *sig, sig_len, msg, msg_len, sk) == OQS_SUCCESS) ? QPQC_OK : QPQC_ERR;
+    pthread_mutex_unlock(&qpqc_rng_lock);
     OQS_SIG_free(s);
     return rc;
 }
@@ -85,7 +100,9 @@ int qpqc_mlkem_encapsulate(const char *alg, const uint8_t *pk, size_t pk_len,
     if (pk_len != k->length_public_key) { OQS_KEM_free(k); return QPQC_ERR; }
     *ct = malloc(k->length_ciphertext);
     if (!*ct) { OQS_KEM_free(k); return QPQC_ERR; }
+    pthread_mutex_lock(&qpqc_rng_lock);
     int rc = (OQS_KEM_encaps(k, *ct, ss_out, pk) == OQS_SUCCESS) ? QPQC_OK : QPQC_ERR;
+    pthread_mutex_unlock(&qpqc_rng_lock);
     *ct_len = k->length_ciphertext; *ss_len = k->length_shared_secret;
     OQS_KEM_free(k);
     return rc;

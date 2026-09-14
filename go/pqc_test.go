@@ -182,3 +182,25 @@ func TestMLDSAKeygenFromSeedVectors(t *testing.T) {
 		}
 	}
 }
+
+// QSR-2026-0202: CIRCL ignores bytes after the signature; the chain does not.
+func TestVerifyRejectsTrailingBytes(t *testing.T) {
+	pub, sec, err := MLDSA.Keygen()
+	if err != nil {
+		t.Fatal(err)
+	}
+	msg := []byte("trailing bytes must not verify")
+	sig, err := MLDSA.Sign(sec, msg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !MLDSA.Verify(pub, msg, sig) {
+		t.Fatal("a well-formed signature must verify")
+	}
+	if MLDSA.Verify(pub, msg, append(append([]byte{}, sig...), 0x00)) {
+		t.Fatal("a signature with a trailing byte verified; the chain rejects it")
+	}
+	if MLDSA.Verify(pub, msg, sig[:len(sig)-1]) {
+		t.Fatal("a truncated signature verified")
+	}
+}

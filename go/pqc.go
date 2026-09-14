@@ -95,7 +95,17 @@ func (sc SigScheme) Sign(secretKey, message []byte) ([]byte, error) {
 }
 
 // Verify checks signature over message under publicKey.
+//
+// The signature must be exactly the scheme's signature size. CIRCL's ML-DSA
+// verifier reads the bytes it needs and ignores anything after them, so a
+// 4,628-byte ML-DSA-87 signature (one trailing byte) verified here while the
+// chain's FIPS-204 verifier, and every other binding, rejects it. A verifier
+// that accepts more encodings than the chain lets a client believe a
+// transaction is valid when the network will refuse it.
 func (sc SigScheme) Verify(publicKey, message, signature []byte) bool {
+	if len(signature) != sc.s.SignatureSize() {
+		return false
+	}
 	pk, err := sc.s.UnmarshalBinaryPublicKey(publicKey)
 	if err != nil {
 		return false

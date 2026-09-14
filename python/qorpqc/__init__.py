@@ -16,6 +16,8 @@ import hashlib
 import struct
 from typing import Tuple
 
+import threading
+
 import oqs  # liboqs-python
 import oqs.rand as _oqs_rand
 
@@ -26,8 +28,13 @@ __version__ = "0.1.1"
 # DETERMINISTIC variant (rnd = 32 zero bytes), matching the shared /vectors and
 # every other language binding — so MlDsa.sign routes liboqs's RNG to a zero
 # filler for the duration of the sign call, then restores the system RNG.
-# NOTE: the RNG switch is process-global in liboqs; do not sign concurrently
-# with other liboqs operations that need real randomness (keygen/encapsulate).
+# The RNG switch is process-global in liboqs, so every operation of this module
+# that draws randomness (keygen, encapsulation, hedged signing) takes the same
+# lock as the deterministic sign path. Without it a keygen on another thread
+# during a sign call drew zeros and produced a key anyone can reproduce. The
+# lock covers this module only: other liboqs users in the same process are not
+# protected and should not run concurrently with it.
+_rng_lock = threading.Lock()
 _RNG_CB_TYPE = ctypes.CFUNCTYPE(None, ctypes.POINTER(ctypes.c_uint8), ctypes.c_size_t)
 
 
@@ -51,7 +58,7 @@ class MlDsa:
         self.level = level
 
     def keygen(self) -> Tuple[bytes, bytes]:
-        with oqs.Signature(self.alg) as s:
+        with _rng_lock, oqs.Signature(self.alg) as s:
             pk = s.generate_keypair()
             sk = s.export_secret_key()
             return pk, sk
@@ -67,14 +74,15 @@ class MlDsa:
         contexts (NOT accepted by the chain).
         """
         if hedged:
-            with oqs.Signature(self.alg, secret_key) as s:
+            with _rng_lock, oqs.Signature(self.alg, secret_key) as s:
                 return s.sign(message)
-        oqs.native().OQS_randombytes_custom_algorithm(_ZERO_RNG)
-        try:
-            with oqs.Signature(self.alg, secret_key) as s:
-                return s.sign(message)
-        finally:
-            _oqs_rand.randombytes_switch_algorithm("system")
+        with _rng_lock:
+            oqs.native().OQS_randombytes_custom_algorithm(_ZERO_RNG)
+            try:
+                with oqs.Signature(self.alg, secret_key) as s:
+                    return s.sign(message)
+            finally:
+                _oqs_rand.randombytes_switch_algorithm("system")
 
     def verify(self, public_key: bytes, message: bytes, signature: bytes) -> bool:
         with oqs.Signature(self.alg) as s:
@@ -89,13 +97,13 @@ class MlKem:
         self.level = level
 
     def keygen(self) -> Tuple[bytes, bytes]:
-        with oqs.KeyEncapsulation(self.alg) as k:
+        with _rng_lock, oqs.KeyEncapsulation(self.alg) as k:
             pk = k.generate_keypair()
             sk = k.export_secret_key()
             return pk, sk
 
     def encapsulate(self, public_key: bytes) -> Tuple[bytes, bytes]:
-        with oqs.KeyEncapsulation(self.alg) as k:
+        with _rng_lock, oqs.KeyEncapsulation(self.alg) as k:
             ct, ss = k.encap_secret(public_key)
             return ct, ss
 
