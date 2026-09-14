@@ -67,9 +67,19 @@ export function pubkeyHash(publicKey, len = 20) { return shake256(publicKey, len
 // framing BE32(len(B0))||B0||BE32(len(authInfo))||authInfo is independent of the
 // extension, so a wallet's classical signature and this PQC signature can be
 // layered without invalidating each other.
-export function hybridSignBytes(bodyWithoutPqcExt, authInfoBytes) {
+export const HYBRID_SIGN_BYTES_DOMAIN = 'qorechain-pqc-hybrid-v2';
+
+// v2: domain ‖ BE64(len chainId) ‖ chainId ‖ BE32(len B0) ‖ B0 ‖ BE32(len A) ‖ A.
+// The domain tag keeps a signature made in another context from being valid
+// transaction sign-bytes; the chain-id keeps a signature from verifying on
+// another network. A v1 frame is rejected by a v2 chain.
+export function hybridSignBytes(chainId, bodyWithoutPqcExt, authInfoBytes) {
+  if (typeof chainId !== 'string' || chainId.length === 0) throw new Error('hybridSignBytes: chainId is required');
+  const te = new TextEncoder();
   const be32 = (n) => { const b = new Uint8Array(4); new DataView(b.buffer).setUint32(0, n >>> 0, false); return b; };
-  const parts = [be32(bodyWithoutPqcExt.length), bodyWithoutPqcExt, be32(authInfoBytes.length), authInfoBytes];
+  const be64 = (n) => { const b = new Uint8Array(8); new DataView(b.buffer).setBigUint64(0, BigInt(n), false); return b; };
+  const cid = te.encode(chainId);
+  const parts = [te.encode(HYBRID_SIGN_BYTES_DOMAIN), be64(cid.length), cid, be32(bodyWithoutPqcExt.length), bodyWithoutPqcExt, be32(authInfoBytes.length), authInfoBytes];
   const total = parts.reduce((a, p) => a + p.length, 0);
   const out = new Uint8Array(total); let o = 0;
   for (const p of parts) { out.set(p, o); o += p.length; }

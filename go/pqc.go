@@ -144,11 +144,26 @@ func Shake256(data []byte, outLen int) []byte {
 // PubkeyHash returns SHAKE-256(publicKey) truncated to len bytes (default 20).
 func PubkeyHash(publicKey []byte, length int) []byte { return Shake256(publicKey, length) }
 
+// HybridSignBytesDomain tags the hybrid sign-bytes so a signature the same key
+// produced in another context cannot be valid transaction sign-bytes.
+const HybridSignBytesDomain = "qorechain-pqc-hybrid-v2"
+
 // HybridSignBytes is the canonical message a PQC signature covers in QoreChain's
-// hybrid-extension scheme: BE32(len(b0))||b0||BE32(len(auth))||auth, where b0 is
-// the tx body WITHOUT the PQC extension.
-func HybridSignBytes(bodyWithoutPqcExt, authInfoBytes []byte) []byte {
-	out := make([]byte, 0, 8+len(bodyWithoutPqcExt)+len(authInfoBytes))
+// hybrid-extension scheme (v2):
+//
+//	"qorechain-pqc-hybrid-v2" ‖ BE64(len chainID) ‖ chainID ‖
+//	  BE32(len b0) ‖ b0 ‖ BE32(len auth) ‖ auth
+//
+// where b0 is the tx body WITHOUT the PQC extension and chainID is the Cosmos
+// chain-id string. Byte-identical to the chain's x/pqc/types.HybridSignBytes. The
+// v1 form (no domain, no chain-id) is rejected by a v2 chain.
+func HybridSignBytes(chainID string, bodyWithoutPqcExt, authInfoBytes []byte) []byte {
+	out := make([]byte, 0, len(HybridSignBytesDomain)+8+len(chainID)+8+len(bodyWithoutPqcExt)+len(authInfoBytes))
+	out = append(out, HybridSignBytesDomain...)
+	var be64 [8]byte
+	binary.BigEndian.PutUint64(be64[:], uint64(len(chainID)))
+	out = append(out, be64[:]...)
+	out = append(out, chainID...)
 	var be [4]byte
 	binary.BigEndian.PutUint32(be[:], uint32(len(bodyWithoutPqcExt)))
 	out = append(out, be[:]...)

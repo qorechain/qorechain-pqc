@@ -41,7 +41,13 @@ func load(t *testing.T, name string, v any) {
 		t.Fatal(err)
 	}
 }
-func dh(t *testing.T, s string) []byte { b, err := hex.DecodeString(s); if err != nil { t.Fatal(err) }; return b }
+func dh(t *testing.T, s string) []byte {
+	b, err := hex.DecodeString(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
 
 func TestMLDSAVectors(t *testing.T) {
 	for _, tc := range []struct {
@@ -96,9 +102,17 @@ func TestRoundtripAndHelpers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sb := HybridSignBytes([]byte{1, 2, 3}, []byte{9, 9})
-	if !bytes.Equal(sb, []byte{0, 0, 0, 3, 1, 2, 3, 0, 0, 0, 2, 9, 9}) {
-		t.Fatal("hybrid framing wrong")
+	// v2: domain ‖ BE64(len chainID) ‖ chainID ‖ BE32(len b0) ‖ b0 ‖ BE32(len auth) ‖ auth
+	sb := HybridSignBytes("qorechain-test", []byte{1, 2, 3}, []byte{9, 9})
+	want := append([]byte(HybridSignBytesDomain), 0, 0, 0, 0, 0, 0, 0, 14)
+	want = append(want, []byte("qorechain-test")...)
+	want = append(want, 0, 0, 0, 3, 1, 2, 3, 0, 0, 0, 2, 9, 9)
+	if !bytes.Equal(sb, want) {
+		t.Fatalf("hybrid framing wrong\n got  %x\n want %x", sb, want)
+	}
+	// The chain-id is bound: another network must give different bytes.
+	if bytes.Equal(sb, HybridSignBytes("other-chain", []byte{1, 2, 3}, []byte{9, 9})) {
+		t.Fatal("chain-id is not bound into the sign-bytes")
 	}
 	sig, err := MLDSA.Sign(sk, sb)
 	if err != nil {

@@ -119,10 +119,27 @@ def pubkey_hash(public_key: bytes, length: int = 20) -> bytes:
     return shake256(public_key, length)
 
 
-def hybrid_sign_bytes(body_without_pqc_ext: bytes, auth_info_bytes: bytes) -> bytes:
-    """Canonical PQC sign-bytes: BE32(len(b0))||b0||BE32(len(auth))||auth."""
+HYBRID_SIGN_BYTES_DOMAIN = b"qorechain-pqc-hybrid-v2"
+
+
+def hybrid_sign_bytes(chain_id: str, body_without_pqc_ext: bytes, auth_info_bytes: bytes) -> bytes:
+    """Canonical PQC sign-bytes, v2:
+
+    ``domain || BE64(len chain_id) || chain_id || BE32(len b0) || b0 || BE32(len auth) || auth``
+
+    The domain tag keeps a signature made in another context from being valid
+    transaction sign-bytes; the chain-id keeps it from verifying on another
+    network. Byte-identical to the chain's x/pqc/types.HybridSignBytes. The v1
+    form (no domain, no chain-id) is rejected by a v2 chain.
+    """
+    if not chain_id:
+        raise ValueError("hybrid_sign_bytes: chain_id is required")
+    cid = chain_id.encode("utf-8")
     return (
-        struct.pack(">I", len(body_without_pqc_ext))
+        HYBRID_SIGN_BYTES_DOMAIN
+        + struct.pack(">Q", len(cid))
+        + cid
+        + struct.pack(">I", len(body_without_pqc_ext))
         + body_without_pqc_ext
         + struct.pack(">I", len(auth_info_bytes))
         + auth_info_bytes

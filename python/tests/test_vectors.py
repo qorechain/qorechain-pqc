@@ -41,8 +41,11 @@ class Vectors(unittest.TestCase):
             self.assertEqual(pqc.shake256(m, 64).hex(), c["out64"])
     def test_roundtrip(self):
         pk, sk = pqc.mldsa.keygen()
-        sb = pqc.hybrid_sign_bytes(b"\x01\x02\x03", b"\x09\x09")
-        self.assertEqual(sb, bytes([0,0,0,3,1,2,3,0,0,0,2,9,9]))
+        # v2: domain || BE64(len chain_id) || chain_id || BE32(len b0) || b0 || BE32(len auth) || auth
+        sb = pqc.hybrid_sign_bytes("qorechain-test", b"\x01\x02\x03", b"\x09\x09")
+        want = pqc.HYBRID_SIGN_BYTES_DOMAIN + bytes([0,0,0,0,0,0,0,14]) + b"qorechain-test" + bytes([0,0,0,3,1,2,3,0,0,0,2,9,9])
+        self.assertEqual(sb, want)
+        self.assertNotEqual(sb, pqc.hybrid_sign_bytes("other-chain", b"\x01\x02\x03", b"\x09\x09"))
         self.assertTrue(pqc.mldsa.verify(pk, sb, pqc.mldsa.sign(sk, sb)))
         self.assertEqual(len(pqc.pubkey_hash(pk)), 20)
         ek, dk = pqc.mlkem.keygen(); ct, ss1 = pqc.mlkem.encapsulate(ek)
