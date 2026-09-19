@@ -21,7 +21,7 @@ import threading
 import oqs  # liboqs-python
 import oqs.rand as _oqs_rand
 
-__version__ = "0.1.1"
+__version__ = "0.2.0"
 
 # liboqs's ML-DSA signs hedged: it draws the 32-byte FIPS-204 `rnd` from
 # OQS_randombytes. QoreChain's on-chain PQC verifier accepts ONLY the
@@ -127,28 +127,63 @@ def pubkey_hash(public_key: bytes, length: int = 20) -> bytes:
     return shake256(public_key, length)
 
 
+# Hybrid sign-bytes: the message a PQC signature covers in QoreChain's
+# hybrid-extension scheme (b0 = tx body WITHOUT the PQC extension, auth = AuthInfo
+# bytes). Two forms exist and a network accepts exactly ONE at any height:
+#   v1 (legacy): BE32(len b0) || b0 || BE32(len auth) || auth
+#   v2:          b"qorechain-pqc-hybrid-v2" || BE64(len chain_id) || chain_id || <v1 layout>
+# Networks that existed before chain release v3.1.98 verify v1 until that upgrade is
+# applied on them, v2 afterwards (sign_bytes_version_for). This module is pure:
+# asking a network for its applied height is left to the caller.
 HYBRID_SIGN_BYTES_DOMAIN = b"qorechain-pqc-hybrid-v2"
+SIGN_BYTES_V2_UPGRADE = "v3.1.98"
+LEGACY_SIGN_BYTES_CHAINS = ("qorechain-vladi", "qorechain-diana")
 
 
-def hybrid_sign_bytes(chain_id: str, body_without_pqc_ext: bytes, auth_info_bytes: bytes) -> bytes:
-    """Canonical PQC sign-bytes, v2:
+def sign_bytes_version_for(chain_id: str, v2_applied_height) -> str:
+    """Return ``"v2"`` if the v3.1.98 plan was applied (height > 0) or ``chain_id``
+    is not a legacy network, else ``"v1"``. Mirror of the chain's
+    SignBytesVersionFor. The height is compared numerically (``"0"`` is not applied)."""
+    h = 0 if v2_applied_height in (None, "") else int(v2_applied_height)
+    if h > 0 or chain_id not in LEGACY_SIGN_BYTES_CHAINS:
+        return "v2"
+    return "v1"
+
+
+def hybrid_sign_bytes_v1(body_without_pqc_ext: bytes, auth_info_bytes: bytes) -> bytes:
+    """Legacy v1 form: ``BE32(len b0) || b0 || BE32(len auth) || auth``."""
+    return (
+        struct.pack(">I", len(body_without_pqc_ext))
+        + body_without_pqc_ext
+        + struct.pack(">I", len(auth_info_bytes))
+        + auth_info_bytes
+    )
+
+
+def hybrid_sign_bytes_v2(chain_id: str, body_without_pqc_ext: bytes, auth_info_bytes: bytes) -> bytes:
+    """v2 form, byte-identical to the chain's x/pqc/types.HybridSignBytes:
 
     ``domain || BE64(len chain_id) || chain_id || BE32(len b0) || b0 || BE32(len auth) || auth``
 
     The domain tag keeps a signature made in another context from being valid
-    transaction sign-bytes; the chain-id keeps it from verifying on another
-    network. Byte-identical to the chain's x/pqc/types.HybridSignBytes. The v1
-    form (no domain, no chain-id) is rejected by a v2 chain.
+    transaction sign-bytes; the chain-id keeps it from verifying on another network.
     """
     if not chain_id:
-        raise ValueError("hybrid_sign_bytes: chain_id is required")
+        raise ValueError("hybrid_sign_bytes_v2: chain_id is required")
     cid = chain_id.encode("utf-8")
     return (
         HYBRID_SIGN_BYTES_DOMAIN
         + struct.pack(">Q", len(cid))
         + cid
-        + struct.pack(">I", len(body_without_pqc_ext))
-        + body_without_pqc_ext
-        + struct.pack(">I", len(auth_info_bytes))
-        + auth_info_bytes
+        + hybrid_sign_bytes_v1(body_without_pqc_ext, auth_info_bytes)
     )
+
+
+def hybrid_sign_bytes(version: str, chain_id: str, body_without_pqc_ext: bytes, auth_info_bytes: bytes) -> bytes:
+    """Hybrid sign-bytes in the given form (``"v1"`` or ``"v2"``). The version is
+    required: there is no implicit form, because each network accepts exactly one."""
+    if version == "v2":
+        return hybrid_sign_bytes_v2(chain_id, body_without_pqc_ext, auth_info_bytes)
+    if version == "v1":
+        return hybrid_sign_bytes_v1(body_without_pqc_ext, auth_info_bytes)
+    raise ValueError(f"hybrid_sign_bytes: version must be 'v1' or 'v2', got {version!r}")

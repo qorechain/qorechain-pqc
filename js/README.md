@@ -38,7 +38,7 @@ shake256(data, 32);        // 32-byte digest
 pubkeyHash(publicKey, 20); // pay-to-pubkey-hash
 ```
 
-Level-specific exports: `mldsa44/65/87`, `mlkem512/768/1024` (`mldsa`/`mlkem` are the L5 defaults). Also `hybridSignBytes(bodyWithoutPqcExt, authInfo)` and `batchVerify`.
+Level-specific exports: `mldsa44/65/87`, `mlkem512/768/1024` (`mldsa`/`mlkem` are the L5 defaults). Also `batchVerify` and the hybrid sign-bytes helpers: `hybridSignBytesV1(b0, auth)` (legacy), `hybridSignBytesV2(chainId, b0, auth)`, `hybridSignBytes(version, chainId, b0, auth)` (version `'v1' | 'v2'` required) and `signBytesVersionFor(chainId, v2AppliedHeight)`. A network accepts exactly one form: mainnet (`qorechain-vladi`) stays on v1 until its own v3.1.98 upgrade, testnet (`qorechain-diana`) is on v2, other chains are v2. See the repo README.
 
 ## Interop
 

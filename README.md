@@ -50,8 +50,38 @@ shake256(data, outLen=32)             -> digest
 ```
 
 Blockchain helpers: `pubkeyHash(pk, len=20)` (pay-to-pubkey-hash registration) and
-`hybridSignBytes(bodyWithoutPqcExt, authInfo)` (QoreChain's wallet-compatible
-hybrid-extension sign-bytes framing).
+QoreChain's wallet-compatible hybrid-extension sign-bytes, in both forms:
+
+```
+v1 (legacy): BE32(len b0) ‖ b0 ‖ BE32(len auth) ‖ auth
+v2:          "qorechain-pqc-hybrid-v2" ‖ BE64(len chainId) ‖ chainId ‖ BE32(len b0) ‖ b0 ‖ BE32(len auth) ‖ auth
+```
+
+A network accepts exactly one form at any height. `qorechain-vladi` (mainnet) and
+`qorechain-diana` (testnet) verify v1 until the `v3.1.98` upgrade is applied on
+them and v2 afterwards; testnet is on v2, **mainnet stays on v1 until its own
+upgrade**. Other chains verify v2 from genesis. Every binding exposes the v1
+builder, the v2 builder, a dispatcher that requires the version, and
+`signBytesVersionFor(chainId, v2AppliedHeight)` (v2 iff height > 0 or the chain is
+not one of the two above):
+
+| Binding | v1 / v2 / dispatcher / version rule |
+|---|---|
+| JS | `hybridSignBytesV1`, `hybridSignBytesV2`, `hybridSignBytes('v1'\|'v2', chainId, b0, auth)`, `signBytesVersionFor` |
+| Go | `HybridSignBytesV1`, `HybridSignBytesV2`, `HybridSignBytes(SignBytesV1\|SignBytesV2, …) ([]byte, error)`, `SignBytesVersionFor` |
+| Rust | `hybrid_sign_bytes_v1`, `hybrid_sign_bytes_v2`, `hybrid_sign_bytes(SignBytesVersion::V1\|V2, …)`, `sign_bytes_version_for` |
+| Python | `hybrid_sign_bytes_v1`, `hybrid_sign_bytes_v2`, `hybrid_sign_bytes("v1"\|"v2", …)`, `sign_bytes_version_for` |
+| Java | `hybridSignBytesV1`, `hybridSignBytesV2`, `hybridSignBytes(SIGN_BYTES_V1\|SIGN_BYTES_V2, …)`, `signBytesVersionFor` |
+| C | `qpqc_hybrid_sign_bytes_v1`, `qpqc_hybrid_sign_bytes_v2`, `qpqc_hybrid_sign_bytes(QPQC_SIGN_BYTES_V1\|_V2, …)`, `qpqc_sign_bytes_version_for` |
+
+These are pure functions: learning a network's applied height
+(`GET {lcd}/cosmos/upgrade/v1beta1/applied_plan/v3.1.98`, `{"height":"<n>"}`,
+compare numerically — `"0"` means not applied) is the caller's job; the
+`@qorechain/wallet-adapter` resolver does it for JS wallets. All bindings are
+tested against the chain's KAT, `vectors/signbytes-kat-v3.1.98.json` (flat copy for
+C/Java: `vectors/signbytes-kat-v3.1.98.flat.txt`, from
+`scripts/gen-signbytes-kat-flat.mjs`). **0.2.0 is breaking**: the old two-argument
+`hybridSignBytes(b0, auth)` (v1) is now `hybridSignBytesV1` in every binding.
 
 > **`sign` is DETERMINISTIC (FIPS-204 §3.4) in every binding** — the same
 > `(secretKey, message)` always yields the same signature, byte-identical across

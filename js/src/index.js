@@ -62,28 +62,65 @@ export function shake256(data, outLen = 32) { return nobleShake(data, { dkLen: o
 // public key in the transaction (pay-to-pubkey-hash style), keeping state small.
 export function pubkeyHash(publicKey, len = 20) { return shake256(publicKey, len); }
 
-// hybridSignBytes: the canonical message a PQC signature covers in QoreChain's
-// hybrid-extension scheme. B0 is the tx body WITHOUT the PQC extension; the
-// framing BE32(len(B0))||B0||BE32(len(authInfo))||authInfo is independent of the
-// extension, so a wallet's classical signature and this PQC signature can be
-// layered without invalidating each other.
-export const HYBRID_SIGN_BYTES_DOMAIN = 'qorechain-pqc-hybrid-v2';
+// ── Hybrid sign-bytes: the message a PQC signature covers in QoreChain's
+// hybrid-extension scheme. B0 is the tx body WITHOUT the PQC extension and A the
+// AuthInfo bytes, so the wallet's classical signature and this PQC signature can
+// be layered without invalidating each other. Two forms exist, and a network
+// accepts exactly ONE of them at any height:
+//
+//   v1 (legacy): BE32(len B0) ‖ B0 ‖ BE32(len A) ‖ A
+//   v2:          "qorechain-pqc-hybrid-v2" ‖ BE64(len chainId) ‖ chainId ‖
+//                  BE32(len B0) ‖ B0 ‖ BE32(len A) ‖ A
+//
+// v2's domain tag keeps a signature the key made in another context from being
+// valid transaction sign-bytes; the chain-id keeps it from verifying on another
+// network. Networks that existed before chain release v3.1.98 verify v1 until
+// that upgrade is applied on them (signBytesVersionFor). This library is pure:
+// asking a network for its applied height is left to the caller.
+export const HYBRID_SIGN_BYTES_V2_DOMAIN = 'qorechain-pqc-hybrid-v2';
+export const HYBRID_SIGN_BYTES_DOMAIN = HYBRID_SIGN_BYTES_V2_DOMAIN;
+export const SIGN_BYTES_V2_UPGRADE = 'v3.1.98';
+export const LEGACY_SIGN_BYTES_CHAINS = Object.freeze(['qorechain-vladi', 'qorechain-diana']);
 
-// v2: domain ‖ BE64(len chainId) ‖ chainId ‖ BE32(len B0) ‖ B0 ‖ BE32(len A) ‖ A.
-// The domain tag keeps a signature made in another context from being valid
-// transaction sign-bytes; the chain-id keeps a signature from verifying on
-// another network. A v1 frame is rejected by a v2 chain.
-export function hybridSignBytes(chainId, bodyWithoutPqcExt, authInfoBytes) {
-  if (typeof chainId !== 'string' || chainId.length === 0) throw new Error('hybridSignBytes: chainId is required');
-  const te = new TextEncoder();
-  const be32 = (n) => { const b = new Uint8Array(4); new DataView(b.buffer).setUint32(0, n >>> 0, false); return b; };
-  const be64 = (n) => { const b = new Uint8Array(8); new DataView(b.buffer).setBigUint64(0, BigInt(n), false); return b; };
-  const cid = te.encode(chainId);
-  const parts = [te.encode(HYBRID_SIGN_BYTES_DOMAIN), be64(cid.length), cid, be32(bodyWithoutPqcExt.length), bodyWithoutPqcExt, be32(authInfoBytes.length), authInfoBytes];
-  const total = parts.reduce((a, p) => a + p.length, 0);
-  const out = new Uint8Array(total); let o = 0;
+const be32 = (n) => { const b = new Uint8Array(4); new DataView(b.buffer).setUint32(0, n >>> 0, false); return b; };
+const be64 = (n) => { const b = new Uint8Array(8); new DataView(b.buffer).setBigUint64(0, BigInt(n), false); return b; };
+const concat = (parts) => {
+  const out = new Uint8Array(parts.reduce((a, p) => a + p.length, 0)); let o = 0;
   for (const p of parts) { out.set(p, o); o += p.length; }
   return out;
+};
+
+// Legacy v1 form, kept for networks that have not applied v3.1.98.
+export function hybridSignBytesV1(bodyWithoutPqcExt, authInfoBytes) {
+  return concat([be32(bodyWithoutPqcExt.length), bodyWithoutPqcExt, be32(authInfoBytes.length), authInfoBytes]);
+}
+
+// v2 form (x/pqc/types.HybridSignBytes).
+export function hybridSignBytesV2(chainId, bodyWithoutPqcExt, authInfoBytes) {
+  if (typeof chainId !== 'string' || chainId.length === 0) throw new Error('hybridSignBytesV2: chainId is required');
+  const te = new TextEncoder();
+  const cid = te.encode(chainId);
+  return concat([te.encode(HYBRID_SIGN_BYTES_V2_DOMAIN), be64(cid.length), cid,
+    be32(bodyWithoutPqcExt.length), bodyWithoutPqcExt, be32(authInfoBytes.length), authInfoBytes]);
+}
+
+// Version-dispatching builder. `version` ('v1' | 'v2') is REQUIRED: there is no
+// implicit form, because each network accepts exactly one.
+export function hybridSignBytes(version, chainId, bodyWithoutPqcExt, authInfoBytes) {
+  if (version === 'v2') return hybridSignBytesV2(chainId, bodyWithoutPqcExt, authInfoBytes);
+  if (version === 'v1') return hybridSignBytesV1(bodyWithoutPqcExt, authInfoBytes);
+  throw new Error(`hybridSignBytes: version must be 'v1' or 'v2', got ${JSON.stringify(version)} (signature is hybridSignBytes(version, chainId, b0, authInfo))`);
+}
+
+// The form a client must sign for chainId, given the height at which the v3.1.98
+// plan was applied on it (0 / "0" / null = not applied). Mirrors the chain's
+// SignBytesVersionFor. Compared numerically: nodes return the height as a
+// string, and "0" is truthy.
+export function signBytesVersionFor(chainId, v2AppliedHeight) {
+  const h = v2AppliedHeight === undefined || v2AppliedHeight === null || v2AppliedHeight === ''
+    ? 0n : BigInt(typeof v2AppliedHeight === 'number' ? Math.trunc(v2AppliedHeight) : v2AppliedHeight);
+  if (h > 0n) return 'v2';
+  return LEGACY_SIGN_BYTES_CHAINS.includes(chainId) ? 'v1' : 'v2';
 }
 
 // batchVerify: verify many (publicKey, message, signature) triples; returns the
@@ -96,4 +133,4 @@ export function batchVerify(scheme, items) {
   return -1;
 }
 
-export const VERSION = '0.1.1';
+export const VERSION = '0.2.0';

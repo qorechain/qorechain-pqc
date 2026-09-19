@@ -35,7 +35,7 @@ import org.bouncycastle.pqc.crypto.mlkem.MLKEMPublicKeyParameters;
  * against the shared vectors in {@code /vectors}.
  */
 public final class Pqc {
-    public static final String VERSION = "0.1.1";
+    public static final String VERSION = "0.2.0";
 
     private Pqc() {}
 
@@ -177,11 +177,67 @@ public final class Pqc {
         return shake256(publicKey, len);
     }
 
-    /** Canonical PQC sign-bytes: BE32(len(b0))||b0||BE32(len(auth))||auth. */
-    public static byte[] hybridSignBytes(byte[] bodyWithoutPqcExt, byte[] authInfoBytes) {
+    // ── Hybrid sign-bytes ────────────────────────────────────────────────────
+    // The message a PQC signature covers in QoreChain's hybrid-extension scheme,
+    // where b0 is the tx body WITHOUT the PQC extension and auth the AuthInfo
+    // bytes. Two forms exist and a network accepts exactly ONE at any height:
+    //   v1 (legacy): BE32(len b0) || b0 || BE32(len auth) || auth
+    //   v2:          "qorechain-pqc-hybrid-v2" || BE64(len chainId) || chainId || <v1 layout>
+    // Networks that existed before chain release v3.1.98 verify v1 until that
+    // upgrade is applied on them, v2 afterwards (signBytesVersionFor). This class
+    // is pure: asking a network for its applied height is left to the caller.
+
+    /** Domain tag of the v2 hybrid sign-bytes. */
+    public static final String HYBRID_SIGN_BYTES_DOMAIN = "qorechain-pqc-hybrid-v2";
+    /** Upgrade-plan name whose application switches a legacy network to v2. */
+    public static final String SIGN_BYTES_V2_UPGRADE = "v3.1.98";
+    /** Networks that verify v1 until {@link #SIGN_BYTES_V2_UPGRADE} is applied on them. */
+    public static final java.util.List<String> LEGACY_SIGN_BYTES_CHAINS =
+            java.util.List.of("qorechain-vladi", "qorechain-diana");
+    /** Legacy sign-bytes form. */
+    public static final int SIGN_BYTES_V1 = 1;
+    /** Domain-tagged, chain-bound sign-bytes form. */
+    public static final int SIGN_BYTES_V2 = 2;
+
+    /**
+     * The form a client must sign for {@code chainId}, given the height at which the
+     * v3.1.98 plan was applied on it (0 = not applied). Mirror of the chain's
+     * SignBytesVersionFor.
+     */
+    public static int signBytesVersionFor(String chainId, long v2AppliedHeight) {
+        if (v2AppliedHeight > 0 || !LEGACY_SIGN_BYTES_CHAINS.contains(chainId)) return SIGN_BYTES_V2;
+        return SIGN_BYTES_V1;
+    }
+
+    /** Legacy v1 sign-bytes: BE32(len(b0))||b0||BE32(len(auth))||auth. */
+    public static byte[] hybridSignBytesV1(byte[] bodyWithoutPqcExt, byte[] authInfoBytes) {
         ByteBuffer buf = ByteBuffer.allocate(8 + bodyWithoutPqcExt.length + authInfoBytes.length);
         buf.putInt(bodyWithoutPqcExt.length).put(bodyWithoutPqcExt);
         buf.putInt(authInfoBytes.length).put(authInfoBytes);
         return buf.array();
+    }
+
+    /** v2 sign-bytes, byte-identical to the chain's x/pqc/types.HybridSignBytes. */
+    public static byte[] hybridSignBytesV2(String chainId, byte[] bodyWithoutPqcExt, byte[] authInfoBytes) {
+        byte[] domain = HYBRID_SIGN_BYTES_DOMAIN.getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+        byte[] cid = chainId.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        ByteBuffer buf = ByteBuffer.allocate(domain.length + 8 + cid.length + 8
+                + bodyWithoutPqcExt.length + authInfoBytes.length);
+        buf.put(domain).putLong(cid.length).put(cid);
+        buf.putInt(bodyWithoutPqcExt.length).put(bodyWithoutPqcExt);
+        buf.putInt(authInfoBytes.length).put(authInfoBytes);
+        return buf.array();
+    }
+
+    /**
+     * Hybrid sign-bytes in the given form ({@link #SIGN_BYTES_V1} or
+     * {@link #SIGN_BYTES_V2}). There is no implicit form.
+     *
+     * @throws IllegalArgumentException for any other version
+     */
+    public static byte[] hybridSignBytes(int version, String chainId, byte[] bodyWithoutPqcExt, byte[] authInfoBytes) {
+        if (version == SIGN_BYTES_V1) return hybridSignBytesV1(bodyWithoutPqcExt, authInfoBytes);
+        if (version == SIGN_BYTES_V2) return hybridSignBytesV2(chainId, bodyWithoutPqcExt, authInfoBytes);
+        throw new IllegalArgumentException("hybrid sign-bytes version must be 1 or 2, got " + version);
     }
 }

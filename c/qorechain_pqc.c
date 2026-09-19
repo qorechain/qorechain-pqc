@@ -123,15 +123,53 @@ void qpqc_pubkey_hash(const uint8_t *pk, size_t pk_len, uint8_t *out, size_t out
 
 static void be32(uint8_t *o, uint32_t n) { o[0]=n>>24; o[1]=n>>16; o[2]=n>>8; o[3]=n; }
 
-int qpqc_hybrid_sign_bytes(const uint8_t *b0, size_t b0_len, const uint8_t *auth, size_t auth_len,
-                           uint8_t **out, size_t *out_len) {
+static void be64(uint8_t *o, uint64_t n) { for (int i = 7; i >= 0; i--) { o[i] = (uint8_t)n; n >>= 8; } }
+
+int qpqc_sign_bytes_version_for(const char *chain_id, int64_t v2_applied_height) {
+    if (v2_applied_height > 0 || !chain_id) return QPQC_SIGN_BYTES_V2;
+    if (!strcmp(chain_id, "qorechain-vladi") || !strcmp(chain_id, "qorechain-diana")) return QPQC_SIGN_BYTES_V1;
+    return QPQC_SIGN_BYTES_V2;
+}
+
+int qpqc_hybrid_sign_bytes_v1(const uint8_t *b0, size_t b0_len, const uint8_t *auth, size_t auth_len,
+                              uint8_t **out, size_t *out_len) {
     size_t total = 8 + b0_len + auth_len;
-    uint8_t *buf = malloc(total);
+    uint8_t *buf = malloc(total ? total : 1);
     if (!buf) return QPQC_ERR;
-    be32(buf, (uint32_t)b0_len); memcpy(buf + 4, b0, b0_len);
-    be32(buf + 4 + b0_len, (uint32_t)auth_len); memcpy(buf + 8 + b0_len, auth, auth_len);
+    be32(buf, (uint32_t)b0_len); if (b0_len) memcpy(buf + 4, b0, b0_len);
+    be32(buf + 4 + b0_len, (uint32_t)auth_len); if (auth_len) memcpy(buf + 8 + b0_len, auth, auth_len);
     *out = buf; *out_len = total;
     return QPQC_OK;
+}
+
+int qpqc_hybrid_sign_bytes_v2(const char *chain_id, size_t chain_id_len,
+                              const uint8_t *b0, size_t b0_len, const uint8_t *auth, size_t auth_len,
+                              uint8_t **out, size_t *out_len) {
+    const size_t dl = sizeof(QPQC_HYBRID_SIGN_BYTES_DOMAIN) - 1;
+    size_t total = dl + 8 + chain_id_len + 8 + b0_len + auth_len;
+    uint8_t *buf = malloc(total);
+    if (!buf) return QPQC_ERR;
+    size_t o = 0;
+    memcpy(buf, QPQC_HYBRID_SIGN_BYTES_DOMAIN, dl); o += dl;
+    be64(buf + o, (uint64_t)chain_id_len); o += 8;
+    if (chain_id_len) memcpy(buf + o, chain_id, chain_id_len);
+    o += chain_id_len;
+    be32(buf + o, (uint32_t)b0_len); o += 4;
+    if (b0_len) memcpy(buf + o, b0, b0_len);
+    o += b0_len;
+    be32(buf + o, (uint32_t)auth_len); o += 4;
+    if (auth_len) memcpy(buf + o, auth, auth_len);
+    *out = buf; *out_len = total;
+    return QPQC_OK;
+}
+
+int qpqc_hybrid_sign_bytes(int version, const char *chain_id, size_t chain_id_len,
+                           const uint8_t *b0, size_t b0_len, const uint8_t *auth, size_t auth_len,
+                           uint8_t **out, size_t *out_len) {
+    if (version == QPQC_SIGN_BYTES_V1) return qpqc_hybrid_sign_bytes_v1(b0, b0_len, auth, auth_len, out, out_len);
+    if (version == QPQC_SIGN_BYTES_V2)
+        return qpqc_hybrid_sign_bytes_v2(chain_id, chain_id_len, b0, b0_len, auth, auth_len, out, out_len);
+    return QPQC_ERR;
 }
 
 void qpqc_free(uint8_t *buf, size_t len) { if (buf) { OQS_MEM_cleanse(buf, len); free(buf); } }

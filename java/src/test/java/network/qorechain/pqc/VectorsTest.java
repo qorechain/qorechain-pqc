@@ -94,7 +94,7 @@ class VectorsTest {
     @Test
     void roundtripAndHelpers() {
         byte[][] kp = Pqc.mldsaKeygen("ml-dsa-87");
-        byte[] sb = Pqc.hybridSignBytes(new byte[] {1, 2, 3}, new byte[] {9, 9});
+        byte[] sb = Pqc.hybridSignBytesV1(new byte[] {1, 2, 3}, new byte[] {9, 9});
         assertArrayEquals(new byte[] {0, 0, 0, 3, 1, 2, 3, 0, 0, 0, 2, 9, 9}, sb);
         byte[] sig = Pqc.mldsaSign("ml-dsa-87", kp[1], sb);
         assertTrue(Pqc.mldsaVerify("ml-dsa-87", kp[0], sb, sig));

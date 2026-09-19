@@ -39,16 +39,93 @@ pub fn pubkey_hash20(public_key: &[u8]) -> [u8; 20] {
     out
 }
 
-/// `hybrid_sign_bytes`: the canonical message a PQC signature covers in
-/// QoreChain's hybrid-extension scheme: `BE32(len(b0))||b0||BE32(len(auth))||auth`,
-/// where `b0` is the tx body WITHOUT the PQC extension.
-pub fn hybrid_sign_bytes(body_without_pqc_ext: &[u8], auth_info_bytes: &[u8]) -> Vec<u8> {
+// ── Hybrid sign-bytes ────────────────────────────────────────────────────────
+// The message a PQC signature covers in QoreChain's hybrid-extension scheme,
+// where `b0` is the tx body WITHOUT the PQC extension and `auth` the AuthInfo
+// bytes. Two forms exist and a network accepts exactly ONE at any height:
+//
+//   v1 (legacy): BE32(len b0) ‖ b0 ‖ BE32(len auth) ‖ auth
+//   v2:          "qorechain-pqc-hybrid-v2" ‖ BE64(len chain_id) ‖ chain_id ‖
+//                  BE32(len b0) ‖ b0 ‖ BE32(len auth) ‖ auth
+//
+// Networks that existed before chain release v3.1.98 verify v1 until that upgrade
+// is applied on them, v2 afterwards (`sign_bytes_version_for`). This crate is
+// pure: asking a network for its applied height is left to the caller.
+
+/// Domain tag of the v2 hybrid sign-bytes.
+pub const HYBRID_SIGN_BYTES_DOMAIN: &str = "qorechain-pqc-hybrid-v2";
+/// Upgrade-plan name whose application switches a legacy network to v2.
+pub const SIGN_BYTES_V2_UPGRADE: &str = "v3.1.98";
+/// Networks that verify v1 until `SIGN_BYTES_V2_UPGRADE` is applied on them.
+pub const LEGACY_SIGN_BYTES_CHAINS: [&str; 2] = ["qorechain-vladi", "qorechain-diana"];
+
+/// Hybrid sign-bytes form.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SignBytesVersion {
+    /// Legacy form (no domain, no chain-id).
+    V1,
+    /// Domain-tagged, chain-bound form.
+    V2,
+}
+
+/// The form a client must sign for `chain_id`, given the height at which the
+/// v3.1.98 plan was applied on it (0 = not applied). Mirror of the chain's
+/// `SignBytesVersionFor`.
+pub fn sign_bytes_version_for(chain_id: &str, v2_applied_height: i64) -> SignBytesVersion {
+    if v2_applied_height > 0 || !LEGACY_SIGN_BYTES_CHAINS.contains(&chain_id) {
+        SignBytesVersion::V2
+    } else {
+        SignBytesVersion::V1
+    }
+}
+
+/// Legacy v1 hybrid sign-bytes: `BE32(len(b0))||b0||BE32(len(auth))||auth`.
+pub fn hybrid_sign_bytes_v1(body_without_pqc_ext: &[u8], auth_info_bytes: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(8 + body_without_pqc_ext.len() + auth_info_bytes.len());
     out.extend_from_slice(&(body_without_pqc_ext.len() as u32).to_be_bytes());
     out.extend_from_slice(body_without_pqc_ext);
     out.extend_from_slice(&(auth_info_bytes.len() as u32).to_be_bytes());
     out.extend_from_slice(auth_info_bytes);
     out
+}
+
+/// v2 hybrid sign-bytes: `domain||BE64(len(chain_id))||chain_id||<v1 layout>`,
+/// byte-identical to the chain's `x/pqc/types.HybridSignBytes`.
+pub fn hybrid_sign_bytes_v2(
+    chain_id: &str,
+    body_without_pqc_ext: &[u8],
+    auth_info_bytes: &[u8],
+) -> Vec<u8> {
+    let cid = chain_id.as_bytes();
+    let mut out = Vec::with_capacity(
+        HYBRID_SIGN_BYTES_DOMAIN.len()
+            + 8
+            + cid.len()
+            + 8
+            + body_without_pqc_ext.len()
+            + auth_info_bytes.len(),
+    );
+    out.extend_from_slice(HYBRID_SIGN_BYTES_DOMAIN.as_bytes());
+    out.extend_from_slice(&(cid.len() as u64).to_be_bytes());
+    out.extend_from_slice(cid);
+    out.extend_from_slice(&hybrid_sign_bytes_v1(body_without_pqc_ext, auth_info_bytes));
+    out
+}
+
+/// Hybrid sign-bytes in the given form. The version is required: there is no
+/// implicit form, because each network accepts exactly one.
+pub fn hybrid_sign_bytes(
+    version: SignBytesVersion,
+    chain_id: &str,
+    body_without_pqc_ext: &[u8],
+    auth_info_bytes: &[u8],
+) -> Vec<u8> {
+    match version {
+        SignBytesVersion::V1 => hybrid_sign_bytes_v1(body_without_pqc_ext, auth_info_bytes),
+        SignBytesVersion::V2 => {
+            hybrid_sign_bytes_v2(chain_id, body_without_pqc_ext, auth_info_bytes)
+        }
+    }
 }
 
 /// ML-DSA (FIPS-204) signatures.
@@ -182,4 +259,4 @@ pub mod mlkem {
     pub use ml_kem_1024 as default;
 }
 
-pub const VERSION: &str = "0.1.1";
+pub const VERSION: &str = "0.2.0";

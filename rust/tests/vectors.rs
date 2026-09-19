@@ -60,7 +60,7 @@ fn shake256_vectors() {
 #[test]
 fn roundtrip_and_helpers() {
     let (pk, sk) = qorechain_pqc::mldsa::default::keygen().unwrap();
-    let sb = qorechain_pqc::hybrid_sign_bytes(&[1, 2, 3], &[9, 9]);
+    let sb = qorechain_pqc::hybrid_sign_bytes_v1(&[1, 2, 3], &[9, 9]);
     assert_eq!(sb, vec![0, 0, 0, 3, 1, 2, 3, 0, 0, 0, 2, 9, 9]);
     let sig = qorechain_pqc::mldsa::default::sign(&sk, &sb).unwrap();
     assert!(qorechain_pqc::mldsa::default::verify(&pk, &sb, &sig));
@@ -105,4 +105,72 @@ fn sign_hedged_optin_differs_and_verifies() {
     assert_ne!(a, b, "hedged signatures must be randomized");
     assert!(s::verify(&pk, msg, &a));
     assert!(s::verify(&pk, msg, &b));
+}
+
+// ── hybrid sign-bytes v1 / v2 (chain v3.1.98 KAT) ──────────────────────────────
+use qorechain_pqc::{
+    hybrid_sign_bytes, hybrid_sign_bytes_v1, hybrid_sign_bytes_v2, sign_bytes_version_for,
+    SignBytesVersion, HYBRID_SIGN_BYTES_DOMAIN,
+};
+
+#[test]
+fn hybrid_v2_kat() {
+    let kat = load("signbytes-kat-v3.1.98.json");
+    assert_eq!(
+        kat["hybrid_domain"].as_str().unwrap(),
+        HYBRID_SIGN_BYTES_DOMAIN
+    );
+    let vs = kat["hybrid_v2"].as_array().unwrap();
+    assert_eq!(vs.len(), 5);
+    for v in vs {
+        let cid = v["chain_id"].as_str().unwrap();
+        let (b0, a) = (hb(v, "body_without_pqc_ext_hex"), hb(v, "auth_info_hex"));
+        let want = v["sign_bytes_hex"].as_str().unwrap();
+        assert_eq!(
+            hex::encode(hybrid_sign_bytes_v2(cid, &b0, &a)),
+            want,
+            "{}",
+            v["name"]
+        );
+        assert_eq!(
+            hex::encode(hybrid_sign_bytes(SignBytesVersion::V2, cid, &b0, &a)),
+            want
+        );
+    }
+}
+
+#[test]
+fn hybrid_v1_layout_and_dispatch() {
+    let want = vec![0, 0, 0, 3, 1, 2, 3, 0, 0, 0, 2, 9, 9];
+    assert_eq!(hybrid_sign_bytes_v1(&[1, 2, 3], &[9, 9]), want);
+    assert_eq!(
+        hybrid_sign_bytes(SignBytesVersion::V1, "qorechain-vladi", &[1, 2, 3], &[9, 9]),
+        want
+    );
+}
+
+#[test]
+fn sign_bytes_version_truth_table() {
+    for c in ["qorechain-vladi", "qorechain-diana"] {
+        assert_eq!(sign_bytes_version_for(c, 0), SignBytesVersion::V1);
+        assert_eq!(sign_bytes_version_for(c, 5_746_000), SignBytesVersion::V2);
+    }
+    assert_eq!(
+        sign_bytes_version_for("qorechain-other", 0),
+        SignBytesVersion::V2
+    );
+    assert_eq!(
+        sign_bytes_version_for("qorechain-other", 5_746_000),
+        SignBytesVersion::V2
+    );
+}
+
+#[test]
+fn v2_signature_does_not_verify_over_v1() {
+    let (pk, sk) = qorechain_pqc::mldsa::default::keygen().unwrap();
+    let v2 = hybrid_sign_bytes_v2("qorechain-vladi", &[1, 2, 3], &[9]);
+    let v1 = hybrid_sign_bytes_v1(&[1, 2, 3], &[9]);
+    let sig = qorechain_pqc::mldsa::default::sign(&sk, &v2).unwrap();
+    assert!(qorechain_pqc::mldsa::default::verify(&pk, &v2, &sig));
+    assert!(!qorechain_pqc::mldsa::default::verify(&pk, &v1, &sig));
 }

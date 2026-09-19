@@ -31,6 +31,7 @@ test_vectors: test_vectors.c libqorechain_pqc.a
 
 test: test_vectors
 	./test_vectors $(if $(VECTORS),$(VECTORS),../vectors/flat.txt)
+	./test_vectors ../vectors/signbytes-kat-v3.1.98.flat.txt
 
 clean:
 	rm -f *.o *.a test_vectors

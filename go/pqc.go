@@ -12,6 +12,7 @@ package pqc
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 
 	mldsa44 "github.com/cloudflare/circl/sign/mldsa/mldsa44"
 	mldsa65 "github.com/cloudflare/circl/sign/mldsa/mldsa65"
@@ -26,7 +27,7 @@ import (
 	"golang.org/x/crypto/sha3"
 )
 
-const Version = "0.1.1"
+const Version = "0.2.0"
 
 // SigScheme is a unified ML-DSA signature scheme handle.
 type SigScheme struct {
@@ -154,32 +155,85 @@ func Shake256(data []byte, outLen int) []byte {
 // PubkeyHash returns SHAKE-256(publicKey) truncated to len bytes (default 20).
 func PubkeyHash(publicKey []byte, length int) []byte { return Shake256(publicKey, length) }
 
-// HybridSignBytesDomain tags the hybrid sign-bytes so a signature the same key
+// Hybrid sign-bytes: the message a PQC signature covers in QoreChain's
+// hybrid-extension scheme, where b0 is the tx body WITHOUT the PQC extension and
+// auth is the AuthInfo bytes. Two forms exist and a network accepts exactly ONE of
+// them at any height:
+//
+//	v1 (legacy): BE32(len b0) ‖ b0 ‖ BE32(len auth) ‖ auth
+//	v2:          "qorechain-pqc-hybrid-v2" ‖ BE64(len chainID) ‖ chainID ‖
+//	               BE32(len b0) ‖ b0 ‖ BE32(len auth) ‖ auth
+//
+// Networks that existed before chain release v3.1.98 verify v1 until that upgrade
+// is applied on them, v2 afterwards; see SignBytesVersionFor. This package is
+// pure: asking a network for its applied height is left to the caller.
+
+// HybridSignBytesDomain tags the v2 hybrid sign-bytes so a signature the same key
 // produced in another context cannot be valid transaction sign-bytes.
 const HybridSignBytesDomain = "qorechain-pqc-hybrid-v2"
 
-// HybridSignBytes is the canonical message a PQC signature covers in QoreChain's
-// hybrid-extension scheme (v2):
-//
-//	"qorechain-pqc-hybrid-v2" ‖ BE64(len chainID) ‖ chainID ‖
-//	  BE32(len b0) ‖ b0 ‖ BE32(len auth) ‖ auth
-//
-// where b0 is the tx body WITHOUT the PQC extension and chainID is the Cosmos
-// chain-id string. Byte-identical to the chain's x/pqc/types.HybridSignBytes. The
-// v1 form (no domain, no chain-id) is rejected by a v2 chain.
-func HybridSignBytes(chainID string, bodyWithoutPqcExt, authInfoBytes []byte) []byte {
-	out := make([]byte, 0, len(HybridSignBytesDomain)+8+len(chainID)+8+len(bodyWithoutPqcExt)+len(authInfoBytes))
-	out = append(out, HybridSignBytesDomain...)
-	var be64 [8]byte
-	binary.BigEndian.PutUint64(be64[:], uint64(len(chainID)))
-	out = append(out, be64[:]...)
-	out = append(out, chainID...)
-	var be [4]byte
-	binary.BigEndian.PutUint32(be[:], uint32(len(bodyWithoutPqcExt)))
-	out = append(out, be[:]...)
+// SignBytesV2Upgrade is the upgrade-plan name whose application switches a
+// legacy network from v1 to v2.
+const SignBytesV2Upgrade = "v3.1.98"
+
+// Sign-bytes form identifiers (match the chain's SignBytesVersionFor).
+const (
+	SignBytesV1 = 1
+	SignBytesV2 = 2
+)
+
+// LegacySignBytesChains are the networks that verify v1 until SignBytesV2Upgrade
+// is applied on them.
+var LegacySignBytesChains = []string{"qorechain-vladi", "qorechain-diana"}
+
+// SignBytesVersionFor returns SignBytesV2 if v2AppliedHeight > 0 or chainID is not
+// a legacy network, otherwise SignBytesV1. Mirror of the chain's function.
+func SignBytesVersionFor(chainID string, v2AppliedHeight int64) int {
+	if v2AppliedHeight > 0 {
+		return SignBytesV2
+	}
+	for _, c := range LegacySignBytesChains {
+		if c == chainID {
+			return SignBytesV1
+		}
+	}
+	return SignBytesV2
+}
+
+// HybridSignBytesV1 is the legacy form, byte-identical to the chain's
+// x/pqc/types.HybridSignBytesLegacy.
+func HybridSignBytesV1(bodyWithoutPqcExt, authInfoBytes []byte) []byte {
+	out := make([]byte, 0, 8+len(bodyWithoutPqcExt)+len(authInfoBytes))
+	out = binary.BigEndian.AppendUint32(out, uint32(len(bodyWithoutPqcExt)))
 	out = append(out, bodyWithoutPqcExt...)
-	binary.BigEndian.PutUint32(be[:], uint32(len(authInfoBytes)))
-	out = append(out, be[:]...)
+	out = binary.BigEndian.AppendUint32(out, uint32(len(authInfoBytes)))
 	out = append(out, authInfoBytes...)
 	return out
+}
+
+// HybridSignBytesV2 is the v2 form, byte-identical to the chain's
+// x/pqc/types.HybridSignBytes.
+func HybridSignBytesV2(chainID string, bodyWithoutPqcExt, authInfoBytes []byte) []byte {
+	out := make([]byte, 0, len(HybridSignBytesDomain)+8+len(chainID)+8+len(bodyWithoutPqcExt)+len(authInfoBytes))
+	out = append(out, HybridSignBytesDomain...)
+	out = binary.BigEndian.AppendUint64(out, uint64(len(chainID)))
+	out = append(out, chainID...)
+	out = binary.BigEndian.AppendUint32(out, uint32(len(bodyWithoutPqcExt)))
+	out = append(out, bodyWithoutPqcExt...)
+	out = binary.BigEndian.AppendUint32(out, uint32(len(authInfoBytes)))
+	out = append(out, authInfoBytes...)
+	return out
+}
+
+// HybridSignBytes builds the form named by version (SignBytesV1 or SignBytesV2).
+// There is no implicit form: any other version is an error.
+func HybridSignBytes(version int, chainID string, bodyWithoutPqcExt, authInfoBytes []byte) ([]byte, error) {
+	switch version {
+	case SignBytesV1:
+		return HybridSignBytesV1(bodyWithoutPqcExt, authInfoBytes), nil
+	case SignBytesV2:
+		return HybridSignBytesV2(chainID, bodyWithoutPqcExt, authInfoBytes), nil
+	default:
+		return nil, fmt.Errorf("hybrid sign-bytes version must be %d or %d, got %d", SignBytesV1, SignBytesV2, version)
+	}
 }

@@ -57,8 +57,36 @@ void qpqc_shake256(const uint8_t *data, size_t data_len, uint8_t *out, size_t ou
 /* pubkey_hash: SHAKE-256(pk) truncated to out_len bytes (e.g. 20). */
 void qpqc_pubkey_hash(const uint8_t *pk, size_t pk_len, uint8_t *out, size_t out_len);
 
-/* hybrid_sign_bytes: BE32(len(b0))||b0||BE32(len(auth))||auth. Caller frees *out. */
-int qpqc_hybrid_sign_bytes(const uint8_t *b0, size_t b0_len, const uint8_t *auth, size_t auth_len,
+/* Hybrid sign-bytes: the message a PQC signature covers in QoreChain's
+ * hybrid-extension scheme (b0 = tx body WITHOUT the PQC extension, auth =
+ * AuthInfo bytes). Two forms exist and a network accepts exactly ONE at any height:
+ *   v1 (legacy): BE32(len b0) || b0 || BE32(len auth) || auth
+ *   v2:          "qorechain-pqc-hybrid-v2" || BE64(len chain_id) || chain_id || <v1 layout>
+ * Networks that existed before chain release v3.1.98 verify v1 until that upgrade
+ * is applied on them, v2 afterwards (qpqc_sign_bytes_version_for). This library is
+ * pure: asking a network for its applied height is left to the caller. */
+#define QPQC_HYBRID_SIGN_BYTES_DOMAIN "qorechain-pqc-hybrid-v2"
+#define QPQC_SIGN_BYTES_V2_UPGRADE "v3.1.98"
+#define QPQC_SIGN_BYTES_V1 1
+#define QPQC_SIGN_BYTES_V2 2
+
+/* QPQC_SIGN_BYTES_V2 if v2_applied_height > 0 or chain_id is not a legacy network
+ * ("qorechain-vladi", "qorechain-diana"), else QPQC_SIGN_BYTES_V1. */
+int qpqc_sign_bytes_version_for(const char *chain_id, int64_t v2_applied_height);
+
+/* Legacy v1 form. Caller frees *out with qpqc_free. */
+int qpqc_hybrid_sign_bytes_v1(const uint8_t *b0, size_t b0_len, const uint8_t *auth, size_t auth_len,
+                              uint8_t **out, size_t *out_len);
+
+/* v2 form; chain_id is chain_id_len UTF-8 bytes (no terminator needed). Caller frees *out. */
+int qpqc_hybrid_sign_bytes_v2(const char *chain_id, size_t chain_id_len,
+                              const uint8_t *b0, size_t b0_len, const uint8_t *auth, size_t auth_len,
+                              uint8_t **out, size_t *out_len);
+
+/* Form named by version (QPQC_SIGN_BYTES_V1 / _V2); any other version -> QPQC_ERR.
+ * There is no implicit form. Caller frees *out. */
+int qpqc_hybrid_sign_bytes(int version, const char *chain_id, size_t chain_id_len,
+                           const uint8_t *b0, size_t b0_len, const uint8_t *auth, size_t auth_len,
                            uint8_t **out, size_t *out_len);
 
 /* Free a buffer returned by this library. */

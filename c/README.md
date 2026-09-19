@@ -38,7 +38,7 @@ uint8_t digest[32]; qpqc_shake256(data, data_len, digest, 32);
 qpqc_free(pk); qpqc_free(sk); qpqc_free(sig);
 ```
 
-See [`qorechain_pqc.h`](qorechain_pqc.h) for the full ABI (ML-KEM encapsulate/decapsulate, `qpqc_pubkey_hash`, `qpqc_hybrid_sign_bytes`).
+See [`qorechain_pqc.h`](qorechain_pqc.h) for the full ABI (ML-KEM encapsulate/decapsulate, `qpqc_pubkey_hash`, and the hybrid sign-bytes `qpqc_hybrid_sign_bytes_v1` / `qpqc_hybrid_sign_bytes_v2` / `qpqc_hybrid_sign_bytes(version, …)` / `qpqc_sign_bytes_version_for`; v1 is legacy, a network accepts exactly one form — see the repo README).
 
 ## Interop
 

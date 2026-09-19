@@ -63,9 +63,10 @@ test('blockchain helpers: pubkeyHash + hybridSignBytes framing', () => {
   const { publicKey, secretKey } = pqc.mldsa.keygen();
   assert.equal(pqc.pubkeyHash(publicKey).length, 20);
   const body = new Uint8Array([1, 2, 3]), auth = new Uint8Array([9, 9]);
-  const sb = pqc.hybridSignBytes(body, auth);
-  // BE32(3)||body||BE32(2)||auth
+  const sb = pqc.hybridSignBytes('v1', 'qorechain-vladi', body, auth);
+  // v1: BE32(3)||body||BE32(2)||auth
   assert.deepEqual([...sb], [0, 0, 0, 3, 1, 2, 3, 0, 0, 0, 2, 9, 9]);
+  assert.deepEqual([...pqc.hybridSignBytesV1(body, auth)], [...sb]);
   const sig = pqc.mldsa.sign(secretKey, sb);
   assert.equal(pqc.mldsa.verify(publicKey, sb, sig), true);
 });
