@@ -24,15 +24,8 @@ Backed by [Bouncy Castle](https://www.bouncycastle.org/).
 > **The ML-DSA secret key in this binding is the 32-byte FIPS-204 seed (ξ), not the
 > expanded secret key.** The JS, Go, Rust, Python and C bindings use the expanded
 > key (2560 / 4032 / **4896** bytes for ML-DSA-44 / 65 / 87). Do not pass an
-> expanded key here: its first 32 bytes are ρ, which is public (they are also the
-> first 32 bytes of the public key), so treating them as a seed would produce a key
-> anyone can derive. Since 0.2.1, `mldsaSign`, `mldsaSignHedged` and
-> `mldsaKeygenFromSeed` require exactly 32 bytes and throw
-> `IllegalArgumentException` with an explanation when given an expanded key
-> (versions up to 0.2.0 silently accepted it). To move a key between bindings, move
-> the 32-byte seed and derive the key pair from it on each side
-> (`mldsaKeygenFromSeed` here, `keygen(seed)` / `KeygenFromSeed` / `keygen_from_seed`
-> elsewhere).
+> The Java binding takes a **32-byte seed** as the secret key, not the 4,896-byte
+> expanded key the other bindings use. Since 0.2.1 any other input is refused.
 
 ## Use
 
