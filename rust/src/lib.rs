@@ -127,31 +127,15 @@ pub fn hybrid_sign_bytes_v1(body_without_pqc_ext: &[u8], auth_info_bytes: &[u8])
 /// v2 hybrid sign-bytes: `domain||BE64(len(chain_id))||chain_id||<v1 layout>`,
 /// byte-identical to the chain's `x/pqc/types.HybridSignBytes`.
 ///
-/// # Panics
-///
-/// If `chain_id` is empty: v2 sign-bytes exist to bind a signature to one
-/// network, and no network has an empty chain-id. Use
-/// [`try_hybrid_sign_bytes_v2`] to get an error instead.
+/// This builder does not check its input. An empty `chain_id` produces bytes
+/// that no network will verify (no network has an empty chain-id), so a
+/// signature over them fails closed. [`try_hybrid_sign_bytes_v2`] is the
+/// checked variant: it returns an error for an empty `chain_id` instead.
 pub fn hybrid_sign_bytes_v2(
     chain_id: &str,
     body_without_pqc_ext: &[u8],
     auth_info_bytes: &[u8],
 ) -> Vec<u8> {
-    match try_hybrid_sign_bytes_v2(chain_id, body_without_pqc_ext, auth_info_bytes) {
-        Ok(v) => v,
-        Err(e) => panic!("{e}"),
-    }
-}
-
-/// [`hybrid_sign_bytes_v2`], returning an error for an empty `chain_id`.
-pub fn try_hybrid_sign_bytes_v2(
-    chain_id: &str,
-    body_without_pqc_ext: &[u8],
-    auth_info_bytes: &[u8],
-) -> Result<Vec<u8>, &'static str> {
-    if chain_id.is_empty() {
-        return Err("hybrid sign-bytes v2: chain_id is required");
-    }
     let cid = chain_id.as_bytes();
     let mut out = Vec::with_capacity(
         HYBRID_SIGN_BYTES_DOMAIN.len()
@@ -165,16 +149,29 @@ pub fn try_hybrid_sign_bytes_v2(
     out.extend_from_slice(&(cid.len() as u64).to_be_bytes());
     out.extend_from_slice(cid);
     out.extend_from_slice(&hybrid_sign_bytes_v1(body_without_pqc_ext, auth_info_bytes));
-    Ok(out)
+    out
+}
+
+/// [`hybrid_sign_bytes_v2`], returning an error for an empty `chain_id`: v2
+/// sign-bytes exist to bind a signature to one network, and no network has an
+/// empty chain-id.
+pub fn try_hybrid_sign_bytes_v2(
+    chain_id: &str,
+    body_without_pqc_ext: &[u8],
+    auth_info_bytes: &[u8],
+) -> Result<Vec<u8>, &'static str> {
+    if chain_id.is_empty() {
+        return Err("hybrid sign-bytes v2: chain_id is required");
+    }
+    Ok(hybrid_sign_bytes_v2(chain_id, body_without_pqc_ext, auth_info_bytes))
 }
 
 /// Hybrid sign-bytes in the given form. The version is required: there is no
 /// implicit form, because each network accepts exactly one.
 ///
-/// # Panics
-///
-/// For [`SignBytesVersion::V2`] with an empty `chain_id`; see
-/// [`try_hybrid_sign_bytes`].
+/// Like [`hybrid_sign_bytes_v2`], this does not check its input: v2 with an
+/// empty `chain_id` produces bytes no network will verify.
+/// [`try_hybrid_sign_bytes`] is the checked variant.
 pub fn hybrid_sign_bytes(
     version: SignBytesVersion,
     chain_id: &str,
@@ -189,8 +186,8 @@ pub fn hybrid_sign_bytes(
     }
 }
 
-/// [`hybrid_sign_bytes`], returning an error instead of panicking when v2 is
-/// asked for with an empty `chain_id`.
+/// [`hybrid_sign_bytes`], returning an error when v2 is asked for with an
+/// empty `chain_id`.
 pub fn try_hybrid_sign_bytes(
     version: SignBytesVersion,
     chain_id: &str,

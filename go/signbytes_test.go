@@ -140,7 +140,7 @@ func TestSignBytesVersionForApplied(t *testing.T) {
 	}
 }
 
-func TestHybridSignBytesV2RefusesEmptyChainID(t *testing.T) {
+func TestHybridSignBytesRefusesEmptyChainID(t *testing.T) {
 	if _, err := HybridSignBytes(SignBytesV2, "", []byte{1}, []byte{2}); err == nil {
 		t.Fatal("dispatcher must refuse an empty chain-id for v2")
 	}
@@ -148,10 +148,11 @@ func TestHybridSignBytesV2RefusesEmptyChainID(t *testing.T) {
 	if _, err := HybridSignBytes(SignBytesV1, "", []byte{1}, []byte{2}); err != nil {
 		t.Fatalf("v1 must not need a chain-id: %v", err)
 	}
-	defer func() {
-		if recover() == nil {
-			t.Fatal("HybridSignBytesV2 must panic on an empty chain-id")
-		}
-	}()
-	HybridSignBytesV2("", []byte{1}, []byte{2})
+	// The unchecked builder must not crash: it returns bytes bound to "",
+	// which no network verifies.
+	got := HybridSignBytesV2("", []byte{1}, []byte{2})
+	want := append([]byte(HybridSignBytesDomain), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 2)
+	if !bytes.Equal(got, want) {
+		t.Fatalf("unchecked v2 builder: got %x want %x", got, want)
+	}
 }

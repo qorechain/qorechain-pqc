@@ -244,13 +244,11 @@ func HybridSignBytesV1(bodyWithoutPqcExt, authInfoBytes []byte) []byte {
 // HybridSignBytesV2 is the v2 form, byte-identical to the chain's
 // x/pqc/types.HybridSignBytes.
 //
-// chainID must not be empty: v2 sign-bytes exist to bind a signature to one
-// network, and no network has an empty chain-id. An empty chainID is a caller
-// bug and panics; HybridSignBytes returns it as an error instead.
+// This builder does not check its input. An empty chainID produces bytes that
+// no network will verify (no network has an empty chain-id), so a signature
+// over them fails closed. HybridSignBytes is the checked entry point: it
+// returns an error for an empty chainID instead.
 func HybridSignBytesV2(chainID string, bodyWithoutPqcExt, authInfoBytes []byte) []byte {
-	if chainID == "" {
-		panic(errEmptyChainID)
-	}
 	out := make([]byte, 0, len(HybridSignBytesDomain)+8+len(chainID)+8+len(bodyWithoutPqcExt)+len(authInfoBytes))
 	out = append(out, HybridSignBytesDomain...)
 	out = binary.BigEndian.AppendUint64(out, uint64(len(chainID)))

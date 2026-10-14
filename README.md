@@ -89,10 +89,12 @@ returns `{"height":"<n>"}` — compare numerically, `"0"` means not applied — 
 the map of answers goes to `signBytesVersionForApplied`. The `@qorechain/wallet-adapter`
 resolver does this for JS wallets. The single-height `signBytesVersionFor(chainId,
 height)` and the single-name `SIGN_BYTES_V2_UPGRADE` constant (now the primary name
-`v3.2.0`) remain for compatibility but are **deprecated**. Go's
-`HybridSignBytesV2` and Rust's `hybrid_sign_bytes_v2` / `hybrid_sign_bytes` panic on
-an empty chain-id (use the error-returning `HybridSignBytes` / `try_*` variants);
-the other bindings throw or return an error.
+`v3.2.0`) remain for compatibility but are **deprecated**. In Go and Rust
+the checked entry points are the error-returning `HybridSignBytes` and
+`try_hybrid_sign_bytes` / `try_hybrid_sign_bytes_v2`; the plain `HybridSignBytesV2` /
+`hybrid_sign_bytes_v2` / `hybrid_sign_bytes` builders do not check and never panic
+(bytes bound to an empty chain-id verify on no network). The other bindings throw
+or return an error.
 
 All bindings are tested against the chain's KAT, `vectors/signbytes-kat-v3.1.98.json`
 (flat copy for C/Java: `vectors/signbytes-kat-v3.1.98.flat.txt`, from
@@ -102,7 +104,7 @@ All bindings are tested against the chain's KAT, `vectors/signbytes-kat-v3.1.98.
 
 **0.2.1** (no breaking API change): both upgrade plan names and
 `signBytesVersionForApplied` in every binding; v2 sign-bytes refuse an empty
-chain-id in every binding; ML-DSA `verify` returns false instead of throwing on
+chain-id in every binding's checked entry point; ML-DSA `verify` returns false instead of throwing on
 malformed input (JS, Python, Java) and every other primitive rejects wrong-length
 input with an error naming the argument (JS, Python, Java); Java rejects a FIPS-204
 expanded secret key where it expects its 32-byte seed (see the

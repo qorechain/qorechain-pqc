@@ -55,8 +55,9 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y cmake ninja-build libssl-dev
           # Pin liboqs to match the liboqs-python version installed below, so the
-          # Python binding's ctypes wrapper finds every symbol it expects.
-          git clone --depth 1 --branch 0.15.0 https://github.com/open-quantum-safe/liboqs
+          # Python binding's ctypes wrapper finds every symbol it expects:
+          # liboqs-python 0.16.0.1 is the maintenance release for liboqs 0.16.0.
+          git clone --depth 1 --branch 0.16.0 https://github.com/open-quantum-safe/liboqs
           cmake -S liboqs -B liboqs/build -GNinja -DBUILD_SHARED_LIBS=ON -DOQS_BUILD_ONLY_LIB=ON
           sudo cmake --build liboqs/build --target install
           sudo ldconfig
@@ -70,5 +71,5 @@ jobs:
           # liboqs-python download/build its own copy.
           OQS_INSTALL_PATH: /usr/local
         run: |
-          pip install liboqs-python==0.15.0
+          pip install liboqs-python==0.16.0.1
           cd python && PYTHONPATH=$PWD python -m unittest discover -s tests

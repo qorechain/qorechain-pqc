@@ -212,7 +212,7 @@ fn sign_bytes_version_for_applied_truth_table() {
 }
 
 #[test]
-fn hybrid_v2_refuses_empty_chain_id() {
+fn hybrid_v2_checked_variants_refuse_empty_chain_id() {
     assert!(try_hybrid_sign_bytes_v2("", &[1], &[2]).is_err());
     assert!(try_hybrid_sign_bytes(SignBytesVersion::V2, "", &[1], &[2]).is_err());
     assert_eq!(
@@ -223,7 +223,10 @@ fn hybrid_v2_refuses_empty_chain_id() {
         try_hybrid_sign_bytes_v2("qorechain-vladi", &[1], &[2]).unwrap(),
         hybrid_sign_bytes_v2("qorechain-vladi", &[1], &[2])
     );
-    assert!(std::panic::catch_unwind(|| hybrid_sign_bytes_v2("", &[1], &[2])).is_err());
-    let r = std::panic::catch_unwind(|| hybrid_sign_bytes(SignBytesVersion::V2, "", &[1], &[2]));
-    assert!(r.is_err());
+    // The unchecked builders must not crash: they return bytes bound to "",
+    // which no network verifies.
+    let mut want = HYBRID_SIGN_BYTES_DOMAIN.as_bytes().to_vec();
+    want.extend_from_slice(&[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 2]);
+    assert_eq!(hybrid_sign_bytes_v2("", &[1], &[2]), want);
+    assert_eq!(hybrid_sign_bytes(SignBytesVersion::V2, "", &[1], &[2]), want);
 }
