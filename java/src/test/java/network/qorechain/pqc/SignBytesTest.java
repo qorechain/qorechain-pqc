@@ -75,6 +75,40 @@ class SignBytesTest {
     }
 
     @Test
+    void upgradeNames() {
+        assertEquals(java.util.List.of("v3.2.0", "v3.1.98"), Pqc.SIGN_BYTES_V2_UPGRADES);
+        assertEquals("v3.2.0", Pqc.SIGN_BYTES_V2_UPGRADE);
+    }
+
+    @Test
+    void versionForAppliedTruthTable() {
+        for (String c : new String[] {"qorechain-vladi", "qorechain-diana"}) {
+            // only v3.2.0 applied -> v2
+            assertEquals(Pqc.SIGN_BYTES_V2, Pqc.signBytesVersionForApplied(c, java.util.Map.of("v3.2.0", 2981742L)));
+            assertEquals(Pqc.SIGN_BYTES_V2, Pqc.signBytesVersionForApplied(c, java.util.Map.of("v3.2.0", 2981742L, "v3.1.98", 0L)));
+            // only v3.1.98 applied -> v2
+            assertEquals(Pqc.SIGN_BYTES_V2, Pqc.signBytesVersionForApplied(c, java.util.Map.of("v3.1.98", 5746000L)));
+            // neither -> v1 on the legacy networks
+            assertEquals(Pqc.SIGN_BYTES_V1, Pqc.signBytesVersionForApplied(c, java.util.Map.of("v3.2.0", 0L, "v3.1.98", 0L)));
+            assertEquals(Pqc.SIGN_BYTES_V1, Pqc.signBytesVersionForApplied(c, java.util.Map.of()));
+            assertEquals(Pqc.SIGN_BYTES_V1, Pqc.signBytesVersionForApplied(c, null));
+            assertEquals(Pqc.SIGN_BYTES_V1, Pqc.signBytesVersionForApplied(c, java.util.Map.of("v9.9.9", 100L)));
+        }
+        // neither -> v2 elsewhere
+        assertEquals(Pqc.SIGN_BYTES_V2, Pqc.signBytesVersionForApplied("qorechain-other", java.util.Map.of()));
+        assertEquals(Pqc.SIGN_BYTES_V2, Pqc.signBytesVersionForApplied("qorechain-other", java.util.Map.of("v3.2.0", 1L)));
+    }
+
+    @Test
+    void v2RefusesEmptyChainId() {
+        assertThrows(IllegalArgumentException.class, () -> Pqc.hybridSignBytesV2("", new byte[] {1}, new byte[] {2}));
+        assertThrows(IllegalArgumentException.class, () -> Pqc.hybridSignBytesV2(null, new byte[] {1}, new byte[] {2}));
+        assertThrows(IllegalArgumentException.class, () -> Pqc.hybridSignBytes(Pqc.SIGN_BYTES_V2, "", new byte[] {1}, new byte[] {2}));
+        assertArrayEquals(new byte[] {0, 0, 0, 1, 1, 0, 0, 0, 1, 2},
+                Pqc.hybridSignBytes(Pqc.SIGN_BYTES_V1, "", new byte[] {1}, new byte[] {2}));
+    }
+
+    @Test
     void v2SignatureDoesNotVerifyOverV1() {
         byte[][] kp = Pqc.mldsaKeygen("ml-dsa-87");
         byte[] v2 = Pqc.hybridSignBytesV2("qorechain-vladi", new byte[] {1, 2, 3}, new byte[] {9});

@@ -27,7 +27,7 @@ import (
 	"golang.org/x/crypto/sha3"
 )
 
-const Version = "0.2.0"
+const Version = "0.2.1"
 
 // SigScheme is a unified ML-DSA signature scheme handle.
 type SigScheme struct {
@@ -164,17 +164,30 @@ func PubkeyHash(publicKey []byte, length int) []byte { return Shake256(publicKey
 //	v2:          "qorechain-pqc-hybrid-v2" ‖ BE64(len chainID) ‖ chainID ‖
 //	               BE32(len b0) ‖ b0 ‖ BE32(len auth) ‖ auth
 //
-// Networks that existed before chain release v3.1.98 verify v1 until that upgrade
-// is applied on them, v2 afterwards; see SignBytesVersionFor. This package is
-// pure: asking a network for its applied height is left to the caller.
+// The two networks that existed before v2 (qorechain-vladi, qorechain-diana)
+// verify v1 until a switching upgrade is applied on them, v2 afterwards; every
+// other chain verifies v2 from genesis. The switch has shipped under TWO plan
+// names: testnet took it as "v3.1.98" and mainnet as "v3.2.0", and each network
+// keeps its record forever. Ask the network for every name in
+// SignBytesV2Upgrades and pass the answers to SignBytesVersionForApplied. This
+// package is pure: asking a network for its applied heights is left to the caller.
 
 // HybridSignBytesDomain tags the v2 hybrid sign-bytes so a signature the same key
 // produced in another context cannot be valid transaction sign-bytes.
 const HybridSignBytesDomain = "qorechain-pqc-hybrid-v2"
 
-// SignBytesV2Upgrade is the upgrade-plan name whose application switches a
-// legacy network from v1 to v2.
-const SignBytesV2Upgrade = "v3.1.98"
+// SignBytesV2Upgrades lists every upgrade-plan name that switched a network to
+// v2, newest first. Mirror of the chain's x/pqc/types.SignBytesV2Upgrades. Any
+// one of them applied (height > 0) means the network verifies v2.
+var SignBytesV2Upgrades = []string{"v3.2.0", "v3.1.98"}
+
+// SignBytesV2Upgrade is the primary (newest) plan name in SignBytesV2Upgrades.
+//
+// Deprecated: a network may have taken the switch under any name in
+// SignBytesV2Upgrades (testnet applied "v3.1.98", mainnet "v3.2.0"). Querying
+// only this name misreads testnet as not switched. Use SignBytesV2Upgrades and
+// SignBytesVersionForApplied.
+const SignBytesV2Upgrade = "v3.2.0"
 
 // Sign-bytes form identifiers (match the chain's SignBytesVersionFor).
 const (
@@ -182,12 +195,14 @@ const (
 	SignBytesV2 = 2
 )
 
-// LegacySignBytesChains are the networks that verify v1 until SignBytesV2Upgrade
-// is applied on them.
+// LegacySignBytesChains are the networks that verify v1 until one of
+// SignBytesV2Upgrades is applied on them.
 var LegacySignBytesChains = []string{"qorechain-vladi", "qorechain-diana"}
 
 // SignBytesVersionFor returns SignBytesV2 if v2AppliedHeight > 0 or chainID is not
 // a legacy network, otherwise SignBytesV1. Mirror of the chain's function.
+// v2AppliedHeight must already be the greatest applied height across
+// SignBytesV2Upgrades; prefer SignBytesVersionForApplied, which computes it.
 func SignBytesVersionFor(chainID string, v2AppliedHeight int64) int {
 	if v2AppliedHeight > 0 {
 		return SignBytesV2
@@ -198,6 +213,21 @@ func SignBytesVersionFor(chainID string, v2AppliedHeight int64) int {
 		}
 	}
 	return SignBytesV2
+}
+
+// SignBytesVersionForApplied is SignBytesVersionFor over every known upgrade
+// name: appliedHeights maps a plan name to the height at which the network
+// applied it (absent or 0 = not applied), and the greatest height across
+// SignBytesV2Upgrades decides. Names not in SignBytesV2Upgrades are ignored.
+// Mirror of the chain's SignBytesVersionForApplied.
+func SignBytesVersionForApplied(chainID string, appliedHeights map[string]int64) int {
+	var best int64
+	for _, name := range SignBytesV2Upgrades {
+		if h := appliedHeights[name]; h > best {
+			best = h
+		}
+	}
+	return SignBytesVersionFor(chainID, best)
 }
 
 // HybridSignBytesV1 is the legacy form, byte-identical to the chain's
@@ -213,7 +243,14 @@ func HybridSignBytesV1(bodyWithoutPqcExt, authInfoBytes []byte) []byte {
 
 // HybridSignBytesV2 is the v2 form, byte-identical to the chain's
 // x/pqc/types.HybridSignBytes.
+//
+// chainID must not be empty: v2 sign-bytes exist to bind a signature to one
+// network, and no network has an empty chain-id. An empty chainID is a caller
+// bug and panics; HybridSignBytes returns it as an error instead.
 func HybridSignBytesV2(chainID string, bodyWithoutPqcExt, authInfoBytes []byte) []byte {
+	if chainID == "" {
+		panic(errEmptyChainID)
+	}
 	out := make([]byte, 0, len(HybridSignBytesDomain)+8+len(chainID)+8+len(bodyWithoutPqcExt)+len(authInfoBytes))
 	out = append(out, HybridSignBytesDomain...)
 	out = binary.BigEndian.AppendUint64(out, uint64(len(chainID)))
@@ -225,6 +262,8 @@ func HybridSignBytesV2(chainID string, bodyWithoutPqcExt, authInfoBytes []byte) 
 	return out
 }
 
+var errEmptyChainID = errors.New("pqc: hybrid sign-bytes v2: chainID is required")
+
 // HybridSignBytes builds the form named by version (SignBytesV1 or SignBytesV2).
 // There is no implicit form: any other version is an error.
 func HybridSignBytes(version int, chainID string, bodyWithoutPqcExt, authInfoBytes []byte) ([]byte, error) {
@@ -232,6 +271,9 @@ func HybridSignBytes(version int, chainID string, bodyWithoutPqcExt, authInfoByt
 	case SignBytesV1:
 		return HybridSignBytesV1(bodyWithoutPqcExt, authInfoBytes), nil
 	case SignBytesV2:
+		if chainID == "" {
+			return nil, errEmptyChainID
+		}
 		return HybridSignBytesV2(chainID, bodyWithoutPqcExt, authInfoBytes), nil
 	default:
 		return nil, fmt.Errorf("hybrid sign-bytes version must be %d or %d, got %d", SignBytesV1, SignBytesV2, version)

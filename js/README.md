@@ -38,7 +38,25 @@ shake256(data, 32);        // 32-byte digest
 pubkeyHash(publicKey, 20); // pay-to-pubkey-hash
 ```
 
-Level-specific exports: `mldsa44/65/87`, `mlkem512/768/1024` (`mldsa`/`mlkem` are the L5 defaults). Also `batchVerify` and the hybrid sign-bytes helpers: `hybridSignBytesV1(b0, auth)` (legacy), `hybridSignBytesV2(chainId, b0, auth)`, `hybridSignBytes(version, chainId, b0, auth)` (version `'v1' | 'v2'` required) and `signBytesVersionFor(chainId, v2AppliedHeight)`. A network accepts exactly one form: mainnet (`qorechain-vladi`) stays on v1 until its own v3.1.98 upgrade, testnet (`qorechain-diana`) is on v2, other chains are v2. See the repo README.
+Level-specific exports: `mldsa44/65/87`, `mlkem512/768/1024` (`mldsa`/`mlkem` are the L5 defaults). Also `batchVerify` and the hybrid sign-bytes helpers: `hybridSignBytesV1(b0, auth)` (legacy), `hybridSignBytesV2(chainId, b0, auth)` (non-empty `chainId` required), `hybridSignBytes(version, chainId, b0, auth)` (version `'v1' | 'v2'` required), `SIGN_BYTES_V2_UPGRADES` and `signBytesVersionForApplied(chainId, appliedHeights)`.
+
+A network accepts exactly one form. Mainnet (`qorechain-vladi`) and testnet (`qorechain-diana`) both verify **v2** today: the switch shipped under two plan names, `v3.1.98` (testnet) and `v3.2.0` (mainnet, applied at height 2,981,742), so ask the node for **every** name in `SIGN_BYTES_V2_UPGRADES` and let the greatest applied height decide:
+
+```js
+import { SIGN_BYTES_V2_UPGRADES, signBytesVersionForApplied, hybridSignBytes } from '@qorechain/pqc';
+
+const applied = {};
+for (const name of SIGN_BYTES_V2_UPGRADES) {
+  const r = await fetch(`${lcd}/cosmos/upgrade/v1beta1/applied_plan/${name}`).then((x) => x.json());
+  applied[name] = r.height; // "0" = not applied
+}
+const version = signBytesVersionForApplied(chainId, applied); // 'v1' | 'v2'
+const signBytes = hybridSignBytes(version, chainId, b0, authInfo);
+```
+
+`signBytesVersionFor(chainId, height)` and the single-name `SIGN_BYTES_V2_UPGRADE` (now `'v3.2.0'`) remain for compatibility but are deprecated: querying only one name misreads a network that switched under the other.
+
+Input checking: `verify` (and therefore `batchVerify`) never throws — a wrong-length key or signature, a non-byte message or any other malformed input returns `false`. `keygen(seed)`, `sign`, `encapsulate` and `decapsulate` throw an `Error` naming the bad argument and its expected length.
 
 ## Interop
 

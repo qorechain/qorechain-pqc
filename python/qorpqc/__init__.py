@@ -21,7 +21,7 @@ import threading
 import oqs  # liboqs-python
 import oqs.rand as _oqs_rand
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 # liboqs's ML-DSA signs hedged: it draws the 32-byte FIPS-204 `rnd` from
 # OQS_randombytes. QoreChain's on-chain PQC verifier accepts ONLY the
@@ -46,6 +46,40 @@ _ZERO_RNG = _RNG_CB_TYPE(_zero_fill)  # module-level ref: must outlive installat
 
 MLDSA_LEVELS = {"ml-dsa-44": "ML-DSA-44", "ml-dsa-65": "ML-DSA-65", "ml-dsa-87": "ML-DSA-87"}
 MLKEM_LEVELS = {"ml-kem-512": "ML-KEM-512", "ml-kem-768": "ML-KEM-768", "ml-kem-1024": "ML-KEM-1024"}
+# Exact FIPS-204 / FIPS-203 sizes. Every key, signature and ciphertext is checked
+# against these BEFORE it reaches liboqs through ctypes: liboqs reads a fixed
+# number of bytes from each pointer, so a short buffer would be read past its end
+# and a long one silently truncated.
+MLDSA_LENGTHS = {  # (public key, secret key, signature)
+    "ml-dsa-44": (1312, 2560, 2420),
+    "ml-dsa-65": (1952, 4032, 3309),
+    "ml-dsa-87": (2592, 4896, 4627),
+}
+MLKEM_LENGTHS = {  # (public key, secret key, ciphertext)
+    "ml-kem-512": (800, 1632, 768),
+    "ml-kem-768": (1184, 2400, 1088),
+    "ml-kem-1024": (1568, 3168, 1568),
+}
+
+_BYTES_LIKE = (bytes, bytearray, memoryview)
+
+
+def _is_bytes(v) -> bool:
+    return isinstance(v, _BYTES_LIKE)
+
+
+def _require_bytes(fn: str, arg: str, value, length=None) -> bytes:
+    """Return ``value`` as bytes, or raise ValueError naming ``arg`` and, when
+    fixed, the expected ``length``."""
+    if not _is_bytes(value):
+        want = f" of {length} bytes" if length is not None else ""
+        raise ValueError(f"{fn}: {arg} must be bytes{want}, got {type(value).__name__}")
+    value = bytes(value)
+    if length is not None and len(value) != length:
+        raise ValueError(f"{fn}: {arg} must be exactly {length} bytes, got {len(value)}")
+    return value
+
+
 MLDSA_DEFAULT = "ml-dsa-87"
 MLKEM_DEFAULT = "ml-kem-1024"
 
@@ -56,6 +90,7 @@ class MlDsa:
     def __init__(self, level: str = MLDSA_DEFAULT):
         self.alg = MLDSA_LEVELS[level]
         self.level = level
+        self.public_key_len, self.secret_key_len, self.signature_len = MLDSA_LENGTHS[level]
 
     def keygen(self) -> Tuple[bytes, bytes]:
         with _rng_lock, oqs.Signature(self.alg) as s:
@@ -72,7 +107,13 @@ class MlDsa:
         deterministic signatures, so this default is consensus-critical: do not
         change it. Pass ``hedged=True`` for randomized signing in non-chain
         contexts (NOT accepted by the chain).
+
+        Raises ValueError if ``secret_key`` is not exactly the expanded secret-key
+        size for this level or ``message`` is not bytes.
         """
+        fn = f"{self.level}.sign"
+        secret_key = _require_bytes(fn, "secret_key", secret_key, self.secret_key_len)
+        message = _require_bytes(fn, "message", message)
         if hedged:
             with _rng_lock, oqs.Signature(self.alg, secret_key) as s:
                 return s.sign(message)
@@ -85,8 +126,19 @@ class MlDsa:
                 _oqs_rand.randombytes_switch_algorithm("system")
 
     def verify(self, public_key: bytes, message: bytes, signature: bytes) -> bool:
-        with oqs.Signature(self.alg) as s:
-            return bool(s.verify(message, signature, public_key))
+        """Return True iff ``signature`` is valid over ``message`` under
+        ``public_key``. Never raises: a wrong-length key or signature, a
+        non-bytes argument or any other malformed input returns False."""
+        if not (_is_bytes(public_key) and _is_bytes(message) and _is_bytes(signature)):
+            return False
+        public_key, message, signature = bytes(public_key), bytes(message), bytes(signature)
+        if len(public_key) != self.public_key_len or len(signature) != self.signature_len:
+            return False
+        try:
+            with oqs.Signature(self.alg) as s:
+                return bool(s.verify(message, signature, public_key))
+        except Exception:  # noqa: BLE001 - malformed input is "not valid", never an error
+            return False
 
 
 class MlKem:
@@ -95,6 +147,7 @@ class MlKem:
     def __init__(self, level: str = MLKEM_DEFAULT):
         self.alg = MLKEM_LEVELS[level]
         self.level = level
+        self.public_key_len, self.secret_key_len, self.ciphertext_len = MLKEM_LENGTHS[level]
 
     def keygen(self) -> Tuple[bytes, bytes]:
         with _rng_lock, oqs.KeyEncapsulation(self.alg) as k:
@@ -103,11 +156,19 @@ class MlKem:
             return pk, sk
 
     def encapsulate(self, public_key: bytes) -> Tuple[bytes, bytes]:
+        """Encapsulate to ``public_key`` -> ``(ciphertext, shared_secret)``.
+        Raises ValueError if ``public_key`` is not exactly the level's size."""
+        public_key = _require_bytes(f"{self.level}.encapsulate", "public_key", public_key, self.public_key_len)
         with _rng_lock, oqs.KeyEncapsulation(self.alg) as k:
             ct, ss = k.encap_secret(public_key)
             return ct, ss
 
     def decapsulate(self, secret_key: bytes, ciphertext: bytes) -> bytes:
+        """Decapsulate ``ciphertext`` with ``secret_key`` -> shared secret. Raises
+        ValueError if either is not exactly the level's size."""
+        fn = f"{self.level}.decapsulate"
+        secret_key = _require_bytes(fn, "secret_key", secret_key, self.secret_key_len)
+        ciphertext = _require_bytes(fn, "ciphertext", ciphertext, self.ciphertext_len)
         with oqs.KeyEncapsulation(self.alg, secret_key) as k:
             return k.decap_secret(ciphertext)
 
@@ -132,22 +193,55 @@ def pubkey_hash(public_key: bytes, length: int = 20) -> bytes:
 # bytes). Two forms exist and a network accepts exactly ONE at any height:
 #   v1 (legacy): BE32(len b0) || b0 || BE32(len auth) || auth
 #   v2:          b"qorechain-pqc-hybrid-v2" || BE64(len chain_id) || chain_id || <v1 layout>
-# Networks that existed before chain release v3.1.98 verify v1 until that upgrade is
-# applied on them, v2 afterwards (sign_bytes_version_for). This module is pure:
-# asking a network for its applied height is left to the caller.
+# The two networks that existed before v2 (qorechain-vladi, qorechain-diana)
+# verify v1 until a switching upgrade is applied on them, v2 afterwards; every
+# other chain verifies v2 from genesis. The switch has shipped under TWO plan
+# names: testnet took it as "v3.1.98" and mainnet as "v3.2.0", and each network
+# keeps its record forever. Ask the network for every name in
+# SIGN_BYTES_V2_UPGRADES and pass the answers to sign_bytes_version_for_applied.
+# This module is pure: asking a network for its applied heights is left to the
+# caller.
 HYBRID_SIGN_BYTES_DOMAIN = b"qorechain-pqc-hybrid-v2"
-SIGN_BYTES_V2_UPGRADE = "v3.1.98"
+# Every upgrade-plan name that switched a network to v2, newest first. Mirror of
+# the chain's x/pqc/types.SignBytesV2Upgrades.
+SIGN_BYTES_V2_UPGRADES = ("v3.2.0", "v3.1.98")
+# DEPRECATED: the primary (newest) name only. A network may have taken the switch
+# under any name in SIGN_BYTES_V2_UPGRADES (testnet applied "v3.1.98", mainnet
+# "v3.2.0"); querying only this one misreads testnet as not switched. Use
+# SIGN_BYTES_V2_UPGRADES with sign_bytes_version_for_applied.
+SIGN_BYTES_V2_UPGRADE = "v3.2.0"
 LEGACY_SIGN_BYTES_CHAINS = ("qorechain-vladi", "qorechain-diana")
 
 
+def _height(v) -> int:
+    return 0 if v in (None, "") else int(v)
+
+
 def sign_bytes_version_for(chain_id: str, v2_applied_height) -> str:
-    """Return ``"v2"`` if the v3.1.98 plan was applied (height > 0) or ``chain_id``
+    """Return ``"v2"`` if the switch to v2 was applied (height > 0) or ``chain_id``
     is not a legacy network, else ``"v1"``. Mirror of the chain's
-    SignBytesVersionFor. The height is compared numerically (``"0"`` is not applied)."""
-    h = 0 if v2_applied_height in (None, "") else int(v2_applied_height)
-    if h > 0 or chain_id not in LEGACY_SIGN_BYTES_CHAINS:
+    SignBytesVersionFor. The height is compared numerically (``"0"`` is not
+    applied) and must already be the greatest across SIGN_BYTES_V2_UPGRADES;
+    prefer :func:`sign_bytes_version_for_applied`, which computes it."""
+    if _height(v2_applied_height) > 0 or chain_id not in LEGACY_SIGN_BYTES_CHAINS:
         return "v2"
     return "v1"
+
+
+def sign_bytes_version_for_applied(chain_id: str, applied_heights) -> str:
+    """:func:`sign_bytes_version_for` over every known upgrade name.
+
+    ``applied_heights`` maps a plan name to the height at which the network
+    applied it (absent, ``0`` or ``"0"`` = not applied); the greatest height
+    across SIGN_BYTES_V2_UPGRADES decides and other names are ignored. Mirror of
+    the chain's SignBytesVersionForApplied."""
+    applied_heights = applied_heights or {}
+    best = 0
+    for name in SIGN_BYTES_V2_UPGRADES:
+        h = _height(applied_heights.get(name))
+        if h > best:
+            best = h
+    return sign_bytes_version_for(chain_id, best)
 
 
 def hybrid_sign_bytes_v1(body_without_pqc_ext: bytes, auth_info_bytes: bytes) -> bytes:

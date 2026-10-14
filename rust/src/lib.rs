@@ -48,15 +48,29 @@ pub fn pubkey_hash20(public_key: &[u8]) -> [u8; 20] {
 //   v2:          "qorechain-pqc-hybrid-v2" ‖ BE64(len chain_id) ‖ chain_id ‖
 //                  BE32(len b0) ‖ b0 ‖ BE32(len auth) ‖ auth
 //
-// Networks that existed before chain release v3.1.98 verify v1 until that upgrade
-// is applied on them, v2 afterwards (`sign_bytes_version_for`). This crate is
-// pure: asking a network for its applied height is left to the caller.
+// The two networks that existed before v2 (`qorechain-vladi`, `qorechain-diana`)
+// verify v1 until a switching upgrade is applied on them, v2 afterwards; every
+// other chain verifies v2 from genesis. The switch has shipped under TWO plan
+// names: testnet took it as "v3.1.98" and mainnet as "v3.2.0", and each network
+// keeps its record forever. Ask the network for every name in
+// `SIGN_BYTES_V2_UPGRADES` and pass the answers to
+// `sign_bytes_version_for_applied`. This crate is pure: asking a network for its
+// applied heights is left to the caller.
 
 /// Domain tag of the v2 hybrid sign-bytes.
 pub const HYBRID_SIGN_BYTES_DOMAIN: &str = "qorechain-pqc-hybrid-v2";
-/// Upgrade-plan name whose application switches a legacy network to v2.
-pub const SIGN_BYTES_V2_UPGRADE: &str = "v3.1.98";
-/// Networks that verify v1 until `SIGN_BYTES_V2_UPGRADE` is applied on them.
+/// Every upgrade-plan name that switched a network to v2, newest first. Mirror of
+/// the chain's `x/pqc/types.SignBytesV2Upgrades`. Any one of them applied
+/// (height > 0) means the network verifies v2.
+pub const SIGN_BYTES_V2_UPGRADES: [&str; 2] = ["v3.2.0", "v3.1.98"];
+/// The primary (newest) name in [`SIGN_BYTES_V2_UPGRADES`].
+///
+/// **Deprecated:** a network may have taken the switch under any name in
+/// [`SIGN_BYTES_V2_UPGRADES`] (testnet applied "v3.1.98", mainnet "v3.2.0"), so
+/// querying only this one misreads testnet as not switched. Use
+/// [`SIGN_BYTES_V2_UPGRADES`] with [`sign_bytes_version_for_applied`].
+pub const SIGN_BYTES_V2_UPGRADE: &str = "v3.2.0";
+/// Networks that verify v1 until one of [`SIGN_BYTES_V2_UPGRADES`] is applied on them.
 pub const LEGACY_SIGN_BYTES_CHAINS: [&str; 2] = ["qorechain-vladi", "qorechain-diana"];
 
 /// Hybrid sign-bytes form.
@@ -69,7 +83,9 @@ pub enum SignBytesVersion {
 }
 
 /// The form a client must sign for `chain_id`, given the height at which the
-/// v3.1.98 plan was applied on it (0 = not applied). Mirror of the chain's
+/// switch to v2 was applied on it (0 = not applied) — already the greatest
+/// height across [`SIGN_BYTES_V2_UPGRADES`]; prefer
+/// [`sign_bytes_version_for_applied`], which computes it. Mirror of the chain's
 /// `SignBytesVersionFor`.
 pub fn sign_bytes_version_for(chain_id: &str, v2_applied_height: i64) -> SignBytesVersion {
     if v2_applied_height > 0 || !LEGACY_SIGN_BYTES_CHAINS.contains(&chain_id) {
@@ -77,6 +93,25 @@ pub fn sign_bytes_version_for(chain_id: &str, v2_applied_height: i64) -> SignByt
     } else {
         SignBytesVersion::V1
     }
+}
+
+/// [`sign_bytes_version_for`] over every known upgrade name. `applied_heights`
+/// maps a plan name to the height at which the network applied it (absent or 0
+/// = not applied); the greatest height across [`SIGN_BYTES_V2_UPGRADES`]
+/// decides and other names are ignored. Mirror of the chain's
+/// `SignBytesVersionForApplied`.
+pub fn sign_bytes_version_for_applied<K>(
+    chain_id: &str,
+    applied_heights: &std::collections::HashMap<K, i64>,
+) -> SignBytesVersion
+where
+    K: std::borrow::Borrow<str> + std::hash::Hash + Eq,
+{
+    let best = SIGN_BYTES_V2_UPGRADES
+        .iter()
+        .filter_map(|name| applied_heights.get(*name).copied())
+        .fold(0i64, i64::max);
+    sign_bytes_version_for(chain_id, best)
 }
 
 /// Legacy v1 hybrid sign-bytes: `BE32(len(b0))||b0||BE32(len(auth))||auth`.
@@ -91,11 +126,32 @@ pub fn hybrid_sign_bytes_v1(body_without_pqc_ext: &[u8], auth_info_bytes: &[u8])
 
 /// v2 hybrid sign-bytes: `domain||BE64(len(chain_id))||chain_id||<v1 layout>`,
 /// byte-identical to the chain's `x/pqc/types.HybridSignBytes`.
+///
+/// # Panics
+///
+/// If `chain_id` is empty: v2 sign-bytes exist to bind a signature to one
+/// network, and no network has an empty chain-id. Use
+/// [`try_hybrid_sign_bytes_v2`] to get an error instead.
 pub fn hybrid_sign_bytes_v2(
     chain_id: &str,
     body_without_pqc_ext: &[u8],
     auth_info_bytes: &[u8],
 ) -> Vec<u8> {
+    match try_hybrid_sign_bytes_v2(chain_id, body_without_pqc_ext, auth_info_bytes) {
+        Ok(v) => v,
+        Err(e) => panic!("{e}"),
+    }
+}
+
+/// [`hybrid_sign_bytes_v2`], returning an error for an empty `chain_id`.
+pub fn try_hybrid_sign_bytes_v2(
+    chain_id: &str,
+    body_without_pqc_ext: &[u8],
+    auth_info_bytes: &[u8],
+) -> Result<Vec<u8>, &'static str> {
+    if chain_id.is_empty() {
+        return Err("hybrid sign-bytes v2: chain_id is required");
+    }
     let cid = chain_id.as_bytes();
     let mut out = Vec::with_capacity(
         HYBRID_SIGN_BYTES_DOMAIN.len()
@@ -109,11 +165,16 @@ pub fn hybrid_sign_bytes_v2(
     out.extend_from_slice(&(cid.len() as u64).to_be_bytes());
     out.extend_from_slice(cid);
     out.extend_from_slice(&hybrid_sign_bytes_v1(body_without_pqc_ext, auth_info_bytes));
-    out
+    Ok(out)
 }
 
 /// Hybrid sign-bytes in the given form. The version is required: there is no
 /// implicit form, because each network accepts exactly one.
+///
+/// # Panics
+///
+/// For [`SignBytesVersion::V2`] with an empty `chain_id`; see
+/// [`try_hybrid_sign_bytes`].
 pub fn hybrid_sign_bytes(
     version: SignBytesVersion,
     chain_id: &str,
@@ -124,6 +185,22 @@ pub fn hybrid_sign_bytes(
         SignBytesVersion::V1 => hybrid_sign_bytes_v1(body_without_pqc_ext, auth_info_bytes),
         SignBytesVersion::V2 => {
             hybrid_sign_bytes_v2(chain_id, body_without_pqc_ext, auth_info_bytes)
+        }
+    }
+}
+
+/// [`hybrid_sign_bytes`], returning an error instead of panicking when v2 is
+/// asked for with an empty `chain_id`.
+pub fn try_hybrid_sign_bytes(
+    version: SignBytesVersion,
+    chain_id: &str,
+    body_without_pqc_ext: &[u8],
+    auth_info_bytes: &[u8],
+) -> Result<Vec<u8>, &'static str> {
+    match version {
+        SignBytesVersion::V1 => Ok(hybrid_sign_bytes_v1(body_without_pqc_ext, auth_info_bytes)),
+        SignBytesVersion::V2 => {
+            try_hybrid_sign_bytes_v2(chain_id, body_without_pqc_ext, auth_info_bytes)
         }
     }
 }
@@ -259,4 +336,4 @@ pub mod mlkem {
     pub use ml_kem_1024 as default;
 }
 
-pub const VERSION: &str = "0.2.0";
+pub const VERSION: &str = "0.2.1";

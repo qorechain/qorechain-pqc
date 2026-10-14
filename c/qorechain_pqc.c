@@ -125,10 +125,26 @@ static void be32(uint8_t *o, uint32_t n) { o[0]=n>>24; o[1]=n>>16; o[2]=n>>8; o[
 
 static void be64(uint8_t *o, uint64_t n) { for (int i = 7; i >= 0; i--) { o[i] = (uint8_t)n; n >>= 8; } }
 
+const char *const qpqc_sign_bytes_v2_upgrades[QPQC_SIGN_BYTES_V2_UPGRADE_COUNT] = {"v3.2.0", "v3.1.98"};
+
 int qpqc_sign_bytes_version_for(const char *chain_id, int64_t v2_applied_height) {
     if (v2_applied_height > 0 || !chain_id) return QPQC_SIGN_BYTES_V2;
     if (!strcmp(chain_id, "qorechain-vladi") || !strcmp(chain_id, "qorechain-diana")) return QPQC_SIGN_BYTES_V1;
     return QPQC_SIGN_BYTES_V2;
+}
+
+int qpqc_sign_bytes_version_for_applied(const char *chain_id, const char *const *names,
+                                        const int64_t *heights, size_t n) {
+    int64_t best = 0;
+    if (names && heights) {
+        for (size_t i = 0; i < n; i++) {
+            if (!names[i]) continue;
+            for (size_t k = 0; k < QPQC_SIGN_BYTES_V2_UPGRADE_COUNT; k++) {
+                if (!strcmp(names[i], qpqc_sign_bytes_v2_upgrades[k]) && heights[i] > best) best = heights[i];
+            }
+        }
+    }
+    return qpqc_sign_bytes_version_for(chain_id, best);
 }
 
 int qpqc_hybrid_sign_bytes_v1(const uint8_t *b0, size_t b0_len, const uint8_t *auth, size_t auth_len,
@@ -145,6 +161,7 @@ int qpqc_hybrid_sign_bytes_v1(const uint8_t *b0, size_t b0_len, const uint8_t *a
 int qpqc_hybrid_sign_bytes_v2(const char *chain_id, size_t chain_id_len,
                               const uint8_t *b0, size_t b0_len, const uint8_t *auth, size_t auth_len,
                               uint8_t **out, size_t *out_len) {
+    if (!chain_id || chain_id_len == 0) return QPQC_ERR;
     const size_t dl = sizeof(QPQC_HYBRID_SIGN_BYTES_DOMAIN) - 1;
     size_t total = dl + 8 + chain_id_len + 8 + b0_len + auth_len;
     uint8_t *buf = malloc(total);

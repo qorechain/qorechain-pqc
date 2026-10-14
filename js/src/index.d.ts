@@ -11,6 +11,7 @@ export interface SigScheme {
   readonly name: string;
   keygen(seed?: Uint8Array): KeyPair;
   sign(secretKey: Uint8Array, message: Uint8Array, opts?: SignOptions): Uint8Array;
+  /** Never throws: malformed input returns false. */
   verify(publicKey: Uint8Array, message: Uint8Array, signature: Uint8Array): boolean;
 }
 export interface KemScheme {
@@ -28,7 +29,10 @@ export type SignBytesVersion = 'v1' | 'v2';
 export const HYBRID_SIGN_BYTES_V2_DOMAIN: 'qorechain-pqc-hybrid-v2';
 /** Alias of HYBRID_SIGN_BYTES_V2_DOMAIN. */
 export const HYBRID_SIGN_BYTES_DOMAIN: 'qorechain-pqc-hybrid-v2';
-export const SIGN_BYTES_V2_UPGRADE: 'v3.1.98';
+/** Every upgrade-plan name that switched a network to v2, newest first. */
+export const SIGN_BYTES_V2_UPGRADES: readonly ['v3.2.0', 'v3.1.98'];
+/** @deprecated The primary name only; a network may have switched under any name in SIGN_BYTES_V2_UPGRADES. */
+export const SIGN_BYTES_V2_UPGRADE: 'v3.2.0';
 export const LEGACY_SIGN_BYTES_CHAINS: readonly string[];
 /** Legacy v1: BE32(len b0) ‖ b0 ‖ BE32(len auth) ‖ auth. */
 export function hybridSignBytesV1(bodyWithoutPqcExt: Uint8Array, authInfoBytes: Uint8Array): Uint8Array;
@@ -38,5 +42,7 @@ export function hybridSignBytesV2(chainId: string, bodyWithoutPqcExt: Uint8Array
 export function hybridSignBytes(version: SignBytesVersion, chainId: string, bodyWithoutPqcExt: Uint8Array, authInfoBytes: Uint8Array): Uint8Array;
 /** Mirror of the chain's SignBytesVersionFor (height compared numerically). */
 export function signBytesVersionFor(chainId: string, v2AppliedHeight: string | number | bigint | null | undefined): SignBytesVersion;
+/** signBytesVersionFor over every name in SIGN_BYTES_V2_UPGRADES: the greatest applied height decides. */
+export function signBytesVersionForApplied(chainId: string, appliedHeights: Record<string, string | number | bigint | null | undefined> | Map<string, string | number | bigint | null | undefined> | null | undefined): SignBytesVersion;
 export function batchVerify(scheme: SigScheme, items: { publicKey: Uint8Array; message: Uint8Array; signature: Uint8Array }[]): number;
 export const VERSION: string;

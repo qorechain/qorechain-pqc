@@ -104,3 +104,54 @@ func TestV2SignatureDoesNotVerifyOverV1(t *testing.T) {
 		t.Fatal("v2 signature must verify over v2 bytes only")
 	}
 }
+
+func TestSignBytesUpgradeNames(t *testing.T) {
+	if len(SignBytesV2Upgrades) != 2 || SignBytesV2Upgrades[0] != "v3.2.0" || SignBytesV2Upgrades[1] != "v3.1.98" {
+		t.Fatalf("SignBytesV2Upgrades = %v, want [v3.2.0 v3.1.98]", SignBytesV2Upgrades)
+	}
+	if SignBytesV2Upgrade != "v3.2.0" {
+		t.Fatalf("SignBytesV2Upgrade = %q, want the primary name v3.2.0", SignBytesV2Upgrade)
+	}
+}
+
+func TestSignBytesVersionForApplied(t *testing.T) {
+	cases := []struct {
+		name    string
+		chain   string
+		applied map[string]int64
+		want    int
+	}{
+		{"mainnet v3.2.0 only", "qorechain-vladi", map[string]int64{"v3.2.0": 2981742}, SignBytesV2},
+		{"testnet v3.1.98 only", "qorechain-diana", map[string]int64{"v3.1.98": 5746000}, SignBytesV2},
+		{"vladi v3.1.98 only", "qorechain-vladi", map[string]int64{"v3.1.98": 10}, SignBytesV2},
+		{"diana v3.2.0 only", "qorechain-diana", map[string]int64{"v3.2.0": 10}, SignBytesV2},
+		{"both applied", "qorechain-vladi", map[string]int64{"v3.2.0": 20, "v3.1.98": 10}, SignBytesV2},
+		{"vladi neither (zeros)", "qorechain-vladi", map[string]int64{"v3.2.0": 0, "v3.1.98": 0}, SignBytesV1},
+		{"vladi neither (nil)", "qorechain-vladi", nil, SignBytesV1},
+		{"diana neither", "qorechain-diana", map[string]int64{}, SignBytesV1},
+		{"unknown name ignored", "qorechain-vladi", map[string]int64{"v9.9.9": 100}, SignBytesV1},
+		{"other chain neither", "qorechain-other", nil, SignBytesV2},
+		{"other chain applied", "qorechain-other", map[string]int64{"v3.2.0": 5}, SignBytesV2},
+	}
+	for _, c := range cases {
+		if got := SignBytesVersionForApplied(c.chain, c.applied); got != c.want {
+			t.Fatalf("%s: got %d want %d", c.name, got, c.want)
+		}
+	}
+}
+
+func TestHybridSignBytesV2RefusesEmptyChainID(t *testing.T) {
+	if _, err := HybridSignBytes(SignBytesV2, "", []byte{1}, []byte{2}); err == nil {
+		t.Fatal("dispatcher must refuse an empty chain-id for v2")
+	}
+	// v1 has no chain-id, so an empty one is fine there.
+	if _, err := HybridSignBytes(SignBytesV1, "", []byte{1}, []byte{2}); err != nil {
+		t.Fatalf("v1 must not need a chain-id: %v", err)
+	}
+	defer func() {
+		if recover() == nil {
+			t.Fatal("HybridSignBytesV2 must panic on an empty chain-id")
+		}
+	}()
+	HybridSignBytesV2("", []byte{1}, []byte{2})
+}

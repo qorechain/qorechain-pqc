@@ -30,7 +30,11 @@ int qpqc_mldsa_keygen(const char *alg, uint8_t **pk, size_t *pk_len, uint8_t **s
 /* ML-DSA: sign `msg` with `sk`. Caller must qpqc_free() *sig.
  * DETERMINISTIC (FIPS-204 §3.4): same (sk, msg) always yields the same
  * signature — required by QoreChain's on-chain PQC verifier and matched by the
- * shared /vectors. Not thread-safe against concurrent liboqs RNG use (see .c). */
+ * shared /vectors. liboqs's RNG is process-global, so this call switches it
+ * to a zero filler under a lock that every randomness-drawing function in this
+ * library (keygen, encapsulate, hedged sign) also takes: calls into this
+ * library are safe to make from several threads. Other liboqs users in the same
+ * process do not take that lock and must not run concurrently with it (see .c). */
 int qpqc_mldsa_sign(const char *alg, const uint8_t *sk, size_t sk_len,
                     const uint8_t *msg, size_t msg_len, uint8_t **sig, size_t *sig_len);
 
@@ -62,28 +66,55 @@ void qpqc_pubkey_hash(const uint8_t *pk, size_t pk_len, uint8_t *out, size_t out
  * AuthInfo bytes). Two forms exist and a network accepts exactly ONE at any height:
  *   v1 (legacy): BE32(len b0) || b0 || BE32(len auth) || auth
  *   v2:          "qorechain-pqc-hybrid-v2" || BE64(len chain_id) || chain_id || <v1 layout>
- * Networks that existed before chain release v3.1.98 verify v1 until that upgrade
- * is applied on them, v2 afterwards (qpqc_sign_bytes_version_for). This library is
- * pure: asking a network for its applied height is left to the caller. */
+ * The two networks that existed before v2 ("qorechain-vladi", "qorechain-diana")
+ * verify v1 until a switching upgrade is applied on them, v2 afterwards; every
+ * other chain verifies v2 from genesis. The switch has shipped under TWO plan
+ * names: testnet took it as "v3.1.98" and mainnet as "v3.2.0", and each network
+ * keeps its record forever. Ask the network for every name in
+ * qpqc_sign_bytes_v2_upgrades and pass the answers to
+ * qpqc_sign_bytes_version_for_applied. This library is pure: asking a network for
+ * its applied heights is left to the caller. */
 #define QPQC_HYBRID_SIGN_BYTES_DOMAIN "qorechain-pqc-hybrid-v2"
-#define QPQC_SIGN_BYTES_V2_UPGRADE "v3.1.98"
+/* DEPRECATED: the primary (newest) name only. A network may have taken the switch
+ * under any name in qpqc_sign_bytes_v2_upgrades (testnet applied "v3.1.98",
+ * mainnet "v3.2.0"); querying only this one misreads testnet as not switched.
+ * Use qpqc_sign_bytes_v2_upgrades with qpqc_sign_bytes_version_for_applied. */
+#define QPQC_SIGN_BYTES_V2_UPGRADE "v3.2.0"
+#define QPQC_SIGN_BYTES_V2_UPGRADE_COUNT 2
 #define QPQC_SIGN_BYTES_V1 1
 #define QPQC_SIGN_BYTES_V2 2
 
+/* Every upgrade-plan name that switched a network to v2, newest first:
+ * { "v3.2.0", "v3.1.98" }. Mirror of the chain's x/pqc/types.SignBytesV2Upgrades. */
+extern const char *const qpqc_sign_bytes_v2_upgrades[QPQC_SIGN_BYTES_V2_UPGRADE_COUNT];
+
 /* QPQC_SIGN_BYTES_V2 if v2_applied_height > 0 or chain_id is not a legacy network
- * ("qorechain-vladi", "qorechain-diana"), else QPQC_SIGN_BYTES_V1. */
+ * ("qorechain-vladi", "qorechain-diana"), else QPQC_SIGN_BYTES_V1. The height must
+ * already be the greatest across qpqc_sign_bytes_v2_upgrades; prefer
+ * qpqc_sign_bytes_version_for_applied, which computes it. */
 int qpqc_sign_bytes_version_for(const char *chain_id, int64_t v2_applied_height);
+
+/* qpqc_sign_bytes_version_for over every known upgrade name. names[i] /
+ * heights[i] (i < n) give the height at which the network applied plan names[i]
+ * (0 = not applied); the greatest height across qpqc_sign_bytes_v2_upgrades
+ * decides, and names not in that list (or NULL) are ignored. n may be 0. Mirror
+ * of the chain's SignBytesVersionForApplied. */
+int qpqc_sign_bytes_version_for_applied(const char *chain_id, const char *const *names,
+                                        const int64_t *heights, size_t n);
 
 /* Legacy v1 form. Caller frees *out with qpqc_free. */
 int qpqc_hybrid_sign_bytes_v1(const uint8_t *b0, size_t b0_len, const uint8_t *auth, size_t auth_len,
                               uint8_t **out, size_t *out_len);
 
-/* v2 form; chain_id is chain_id_len UTF-8 bytes (no terminator needed). Caller frees *out. */
+/* v2 form; chain_id is chain_id_len UTF-8 bytes (no terminator needed). Caller frees *out.
+ * Returns QPQC_ERR if chain_id is NULL or chain_id_len is 0: v2 binds a signature
+ * to one network, and no network has an empty chain-id. */
 int qpqc_hybrid_sign_bytes_v2(const char *chain_id, size_t chain_id_len,
                               const uint8_t *b0, size_t b0_len, const uint8_t *auth, size_t auth_len,
                               uint8_t **out, size_t *out_len);
 
-/* Form named by version (QPQC_SIGN_BYTES_V1 / _V2); any other version -> QPQC_ERR.
+/* Form named by version (QPQC_SIGN_BYTES_V1 / _V2); any other version, or v2 with an
+ * empty chain_id -> QPQC_ERR.
  * There is no implicit form. Caller frees *out. */
 int qpqc_hybrid_sign_bytes(int version, const char *chain_id, size_t chain_id_len,
                            const uint8_t *b0, size_t b0_len, const uint8_t *auth, size_t auth_len,

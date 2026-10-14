@@ -14,7 +14,8 @@ const hx = (b) => Buffer.from(b).toString('hex');
 test('constants', () => {
   assert.equal(pqc.HYBRID_SIGN_BYTES_V2_DOMAIN, KAT.hybrid_domain);
   assert.equal(pqc.HYBRID_SIGN_BYTES_DOMAIN, KAT.hybrid_domain);
-  assert.equal(pqc.SIGN_BYTES_V2_UPGRADE, 'v3.1.98');
+  assert.deepEqual([...pqc.SIGN_BYTES_V2_UPGRADES], ['v3.2.0', 'v3.1.98']);
+  assert.equal(pqc.SIGN_BYTES_V2_UPGRADE, 'v3.2.0');
   assert.deepEqual([...pqc.LEGACY_SIGN_BYTES_CHAINS], ['qorechain-vladi', 'qorechain-diana']);
 });
 
@@ -52,4 +53,27 @@ test('a signature over v2 verifies over v2 bytes and not over v1', () => {
   const sig = pqc.mldsa.sign(secretKey, v2);
   assert.equal(pqc.mldsa.verify(publicKey, v2, sig), true);
   assert.equal(pqc.mldsa.verify(publicKey, v1, sig), false);
+});
+
+test('signBytesVersionForApplied: either plan name switches a legacy network to v2', () => {
+  for (const cid of ['qorechain-vladi', 'qorechain-diana']) {
+    assert.equal(pqc.signBytesVersionForApplied(cid, { 'v3.2.0': '2981742' }), 'v2', `${cid} v3.2.0 only`);
+    assert.equal(pqc.signBytesVersionForApplied(cid, { 'v3.2.0': '2981742', 'v3.1.98': '0' }), 'v2');
+    assert.equal(pqc.signBytesVersionForApplied(cid, { 'v3.1.98': 5746000 }), 'v2', `${cid} v3.1.98 only`);
+    assert.equal(pqc.signBytesVersionForApplied(cid, { 'v3.2.0': '0', 'v3.1.98': 5746000n }), 'v2');
+    assert.equal(pqc.signBytesVersionForApplied(cid, new Map([['v3.1.98', '7']])), 'v2', 'Map input');
+    assert.equal(pqc.signBytesVersionForApplied(cid, { 'v3.2.0': '0', 'v3.1.98': '0' }), 'v1', `${cid} neither`);
+    assert.equal(pqc.signBytesVersionForApplied(cid, {}), 'v1');
+    assert.equal(pqc.signBytesVersionForApplied(cid, null), 'v1');
+    assert.equal(pqc.signBytesVersionForApplied(cid, { 'v9.9.9': '100' }), 'v1', 'unknown names are ignored');
+  }
+  assert.equal(pqc.signBytesVersionForApplied('qorechain-other', {}), 'v2', 'other chains: v2 with neither');
+  assert.equal(pqc.signBytesVersionForApplied('qorechain-other', { 'v3.2.0': 1 }), 'v2');
+});
+
+test('v2 refuses an empty chainId (direct and via the dispatcher); v1 does not need one', () => {
+  const b0 = Uint8Array.from([1]), a = Uint8Array.from([2]);
+  assert.throws(() => pqc.hybridSignBytesV2('', b0, a), /chainId is required/);
+  assert.throws(() => pqc.hybridSignBytes('v2', '', b0, a), /chainId is required/);
+  assert.deepEqual([...pqc.hybridSignBytes('v1', '', b0, a)], [0, 0, 0, 1, 1, 0, 0, 0, 1, 2]);
 });

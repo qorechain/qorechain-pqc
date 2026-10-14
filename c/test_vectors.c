@@ -84,7 +84,7 @@ int main(int argc, char **argv) {
     /* roundtrip + helper sanity */
     uint8_t *pk, *sk, *sig = NULL, *hb;
     size_t pkl, skl, sl = 0, hbl;
-    int rt = 0;
+    int rt = 0, vfa = 1, ecid = 1;
     if (qpqc_mldsa_keygen(QPQC_MLDSA_DEFAULT, &pk, &pkl, &sk, &skl) == QPQC_OK) {
         uint8_t b0[3] = {1, 2, 3}, au[2] = {9, 9};
         qpqc_hybrid_sign_bytes_v1(b0, 3, au, 2, &hb, &hbl);
@@ -108,10 +108,49 @@ int main(int argc, char **argv) {
             qpqc_sign_bytes_version_for("qorechain-diana", 5746000) != QPQC_SIGN_BYTES_V2 ||
             qpqc_sign_bytes_version_for("qorechain-other", 0) != QPQC_SIGN_BYTES_V2 ||
             qpqc_sign_bytes_version_for("qorechain-other", 5746000) != QPQC_SIGN_BYTES_V2) rt = 0;
+        /* upgrade names: v3.2.0 (primary) and v3.1.98, either one switches to v2 */
+        if (strcmp(QPQC_SIGN_BYTES_V2_UPGRADE, "v3.2.0") || QPQC_SIGN_BYTES_V2_UPGRADE_COUNT != 2 ||
+            strcmp(qpqc_sign_bytes_v2_upgrades[0], "v3.2.0") || strcmp(qpqc_sign_bytes_v2_upgrades[1], "v3.1.98")) vfa = 0;
+        {
+            const char *only_new[] = {"v3.2.0", "v3.1.98"};
+            const int64_t h_new[] = {2981742, 0}, h_old[] = {0, 5746000}, h_none[] = {0, 0};
+            const char *only_old_name[] = {"v3.1.98"};
+            const int64_t h_old1[] = {5746000};
+            const char *unknown[] = {"v9.9.9", NULL};
+            const int64_t h_unknown[] = {100, 100};
+            const char *legacy[] = {"qorechain-vladi", "qorechain-diana"};
+            for (int i = 0; i < 2; i++) {
+                if (qpqc_sign_bytes_version_for_applied(legacy[i], only_new, h_new, 2) != QPQC_SIGN_BYTES_V2 ||
+                    qpqc_sign_bytes_version_for_applied(legacy[i], only_new, h_old, 2) != QPQC_SIGN_BYTES_V2 ||
+                    qpqc_sign_bytes_version_for_applied(legacy[i], only_old_name, h_old1, 1) != QPQC_SIGN_BYTES_V2 ||
+                    qpqc_sign_bytes_version_for_applied(legacy[i], only_new, h_none, 2) != QPQC_SIGN_BYTES_V1 ||
+                    qpqc_sign_bytes_version_for_applied(legacy[i], NULL, NULL, 0) != QPQC_SIGN_BYTES_V1 ||
+                    qpqc_sign_bytes_version_for_applied(legacy[i], unknown, h_unknown, 2) != QPQC_SIGN_BYTES_V1) {
+                    fprintf(stderr, "FAIL version_for_applied %s\n", legacy[i]); vfa = 0;
+                }
+            }
+            if (qpqc_sign_bytes_version_for_applied("qorechain-other", NULL, NULL, 0) != QPQC_SIGN_BYTES_V2 ||
+                qpqc_sign_bytes_version_for_applied("qorechain-other", only_new, h_none, 2) != QPQC_SIGN_BYTES_V2) {
+                fprintf(stderr, "FAIL version_for_applied other\n"); vfa = 0;
+            }
+        }
+        /* v2 refuses an empty chain-id (direct and via the dispatcher); v1 needs none */
+        {
+            uint8_t *e = NULL; size_t el = 0;
+            if (qpqc_hybrid_sign_bytes_v2("", 0, b0, 3, au, 2, &e, &el) != QPQC_ERR ||
+                qpqc_hybrid_sign_bytes_v2(NULL, 0, b0, 3, au, 2, &e, &el) != QPQC_ERR ||
+                qpqc_hybrid_sign_bytes(QPQC_SIGN_BYTES_V2, "", 0, b0, 3, au, 2, &e, &el) != QPQC_ERR) {
+                fprintf(stderr, "FAIL empty chain-id accepted\n"); ecid = 0;
+            }
+            if (qpqc_hybrid_sign_bytes(QPQC_SIGN_BYTES_V1, "", 0, b0, 3, au, 2, &e, &el) != QPQC_OK || el != 13) ecid = 0;
+            else qpqc_free(e, el);
+        }
         qpqc_free(v2, v2l); qpqc_free(sig2, sl2);
         qpqc_free(pk, pkl); qpqc_free(sk, skl); qpqc_free(hb, hbl);
     }
     total++; if (rt) pass++; else fprintf(stderr, "FAIL roundtrip\n");
+    total++; if (rt && vfa) pass++; else fprintf(stderr, "FAIL sign-bytes upgrade names / version_for_applied\n");
+    total++; if (rt && ecid) pass++; else fprintf(stderr, "FAIL v2 empty chain-id\n");
 
     printf("C/liboqs vectors: %d/%d passed\n", pass, total);
     return pass == total ? 0 : 1;

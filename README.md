@@ -57,31 +57,56 @@ v1 (legacy): BE32(len b0) ‖ b0 ‖ BE32(len auth) ‖ auth
 v2:          "qorechain-pqc-hybrid-v2" ‖ BE64(len chainId) ‖ chainId ‖ BE32(len b0) ‖ b0 ‖ BE32(len auth) ‖ auth
 ```
 
-A network accepts exactly one form at any height. `qorechain-vladi` (mainnet) and
-`qorechain-diana` (testnet) verify v1 until the `v3.1.98` upgrade is applied on
-them and v2 afterwards; testnet is on v2, **mainnet stays on v1 until its own
-upgrade**. Other chains verify v2 from genesis. Every binding exposes the v1
-builder, the v2 builder, a dispatcher that requires the version, and
-`signBytesVersionFor(chainId, v2AppliedHeight)` (v2 iff height > 0 or the chain is
-not one of the two above):
+A network accepts exactly one form at any height. Every chain other than the two
+below verifies v2 from genesis. `qorechain-vladi` (mainnet) and `qorechain-diana`
+(testnet) verified v1 until a switching upgrade was applied on them and verify v2
+from then on. **That switch shipped under two plan names**, newest first:
 
-| Binding | v1 / v2 / dispatcher / version rule |
+| Plan name | Applied on |
 |---|---|
-| JS | `hybridSignBytesV1`, `hybridSignBytesV2`, `hybridSignBytes('v1'\|'v2', chainId, b0, auth)`, `signBytesVersionFor` |
-| Go | `HybridSignBytesV1`, `HybridSignBytesV2`, `HybridSignBytes(SignBytesV1\|SignBytesV2, …) ([]byte, error)`, `SignBytesVersionFor` |
-| Rust | `hybrid_sign_bytes_v1`, `hybrid_sign_bytes_v2`, `hybrid_sign_bytes(SignBytesVersion::V1\|V2, …)`, `sign_bytes_version_for` |
-| Python | `hybrid_sign_bytes_v1`, `hybrid_sign_bytes_v2`, `hybrid_sign_bytes("v1"\|"v2", …)`, `sign_bytes_version_for` |
-| Java | `hybridSignBytesV1`, `hybridSignBytesV2`, `hybridSignBytes(SIGN_BYTES_V1\|SIGN_BYTES_V2, …)`, `signBytesVersionFor` |
-| C | `qpqc_hybrid_sign_bytes_v1`, `qpqc_hybrid_sign_bytes_v2`, `qpqc_hybrid_sign_bytes(QPQC_SIGN_BYTES_V1\|_V2, …)`, `qpqc_sign_bytes_version_for` |
+| `v3.2.0` | mainnet `qorechain-vladi`, at height 2,981,742 |
+| `v3.1.98` | testnet `qorechain-diana` |
 
-These are pure functions: learning a network's applied height
-(`GET {lcd}/cosmos/upgrade/v1beta1/applied_plan/v3.1.98`, `{"height":"<n>"}`,
-compare numerically — `"0"` means not applied) is the caller's job; the
-`@qorechain/wallet-adapter` resolver does it for JS wallets. All bindings are
-tested against the chain's KAT, `vectors/signbytes-kat-v3.1.98.json` (flat copy for
-C/Java: `vectors/signbytes-kat-v3.1.98.flat.txt`, from
-`scripts/gen-signbytes-kat-flat.mjs`). **0.2.0 is breaking**: the old two-argument
-`hybridSignBytes(b0, auth)` (v1) is now `hybridSignBytesV1` in every binding.
+Both networks are on v2 today. A client must ask the network about **every**
+name and let the greatest applied height decide, exactly as the chain's
+`SignBytesVersionForApplied` does — querying a single name misreads whichever
+network switched under the other one. Every binding exposes the v1 builder, the
+v2 builder (an empty chain-id is refused), a dispatcher that requires the version,
+the list of plan names and `signBytesVersionForApplied(chainId, {name: height})`:
+
+| Binding | v1 / v2 / dispatcher / plan names / version rule |
+|---|---|
+| JS | `hybridSignBytesV1`, `hybridSignBytesV2`, `hybridSignBytes('v1'\|'v2', chainId, b0, auth)`, `SIGN_BYTES_V2_UPGRADES`, `signBytesVersionForApplied(chainId, {name: height})` |
+| Go | `HybridSignBytesV1`, `HybridSignBytesV2`, `HybridSignBytes(SignBytesV1\|SignBytesV2, …) ([]byte, error)`, `SignBytesV2Upgrades`, `SignBytesVersionForApplied(chainID, map[string]int64)` |
+| Rust | `hybrid_sign_bytes_v1`, `hybrid_sign_bytes_v2` / `try_hybrid_sign_bytes_v2`, `hybrid_sign_bytes(SignBytesVersion::V1\|V2, …)` / `try_hybrid_sign_bytes`, `SIGN_BYTES_V2_UPGRADES`, `sign_bytes_version_for_applied(chain_id, &HashMap<_, i64>)` |
+| Python | `hybrid_sign_bytes_v1`, `hybrid_sign_bytes_v2`, `hybrid_sign_bytes("v1"\|"v2", …)`, `SIGN_BYTES_V2_UPGRADES`, `sign_bytes_version_for_applied(chain_id, {name: height})` |
+| Java | `hybridSignBytesV1`, `hybridSignBytesV2`, `hybridSignBytes(SIGN_BYTES_V1\|SIGN_BYTES_V2, …)`, `SIGN_BYTES_V2_UPGRADES`, `signBytesVersionForApplied(chainId, Map<String, Long>)` |
+| C | `qpqc_hybrid_sign_bytes_v1`, `qpqc_hybrid_sign_bytes_v2`, `qpqc_hybrid_sign_bytes(QPQC_SIGN_BYTES_V1\|_V2, …)`, `qpqc_sign_bytes_v2_upgrades`, `qpqc_sign_bytes_version_for_applied(chain_id, names, heights, n)` |
+
+These are pure functions: learning a network's applied heights is the caller's
+job. For each name in the list, `GET {lcd}/cosmos/upgrade/v1beta1/applied_plan/<name>`
+returns `{"height":"<n>"}` — compare numerically, `"0"` means not applied — and
+the map of answers goes to `signBytesVersionForApplied`. The `@qorechain/wallet-adapter`
+resolver does this for JS wallets. The single-height `signBytesVersionFor(chainId,
+height)` and the single-name `SIGN_BYTES_V2_UPGRADE` constant (now the primary name
+`v3.2.0`) remain for compatibility but are **deprecated**. Go's
+`HybridSignBytesV2` and Rust's `hybrid_sign_bytes_v2` / `hybrid_sign_bytes` panic on
+an empty chain-id (use the error-returning `HybridSignBytes` / `try_*` variants);
+the other bindings throw or return an error.
+
+All bindings are tested against the chain's KAT, `vectors/signbytes-kat-v3.1.98.json`
+(flat copy for C/Java: `vectors/signbytes-kat-v3.1.98.flat.txt`, from
+`scripts/gen-signbytes-kat-flat.mjs`); the byte layout did not change in `v3.2.0`.
+**0.2.0 is breaking**: the old two-argument `hybridSignBytes(b0, auth)` (v1) is now
+`hybridSignBytesV1` in every binding.
+
+**0.2.1** (no breaking API change): both upgrade plan names and
+`signBytesVersionForApplied` in every binding; v2 sign-bytes refuse an empty
+chain-id in every binding; ML-DSA `verify` returns false instead of throwing on
+malformed input (JS, Python, Java) and every other primitive rejects wrong-length
+input with an error naming the argument (JS, Python, Java); Java rejects a FIPS-204
+expanded secret key where it expects its 32-byte seed (see the
+[Java README](java/README.md)); Go uses CIRCL 1.6.5.
 
 > **`sign` is DETERMINISTIC (FIPS-204 §3.4) in every binding** — the same
 > `(secretKey, message)` always yields the same signature, byte-identical across

@@ -12,11 +12,42 @@ import { ml_dsa44, ml_dsa65, ml_dsa87 } from '@noble/post-quantum/ml-dsa.js';
 import { ml_kem512, ml_kem768, ml_kem1024 } from '@noble/post-quantum/ml-kem.js';
 import { shake256 as nobleShake } from '@noble/hashes/sha3.js';
 
+// Exact FIPS-204 / FIPS-203 sizes, checked before any input reaches the backend
+// so a malformed argument is reported by name instead of surfacing as a raw
+// RangeError/TypeError from inside @noble.
+const SIG_LENGTHS = {
+  'ml-dsa-44': { seed: 32, publicKey: 1312, secretKey: 2560, signature: 2420 },
+  'ml-dsa-65': { seed: 32, publicKey: 1952, secretKey: 4032, signature: 3309 },
+  'ml-dsa-87': { seed: 32, publicKey: 2592, secretKey: 4896, signature: 4627 },
+};
+const KEM_LENGTHS = {
+  'ml-kem-512': { seed: 64, publicKey: 800, secretKey: 1632, cipherText: 768 },
+  'ml-kem-768': { seed: 64, publicKey: 1184, secretKey: 2400, cipherText: 1088 },
+  'ml-kem-1024': { seed: 64, publicKey: 1568, secretKey: 3168, cipherText: 1568 },
+};
+
+const isBytes = (v) => v instanceof Uint8Array;
+const describe = (v) => (isBytes(v) ? `${v.length} bytes`
+  : v === null ? 'null' : Array.isArray(v) ? 'an Array' : typeof v);
+// Throws a plain Error naming the argument and, when fixed, the expected length.
+function requireBytes(fn, arg, v, len) {
+  if (!isBytes(v)) {
+    throw new Error(`${fn}: ${arg} must be a Uint8Array${len === undefined ? '' : ` of ${len} bytes`}, got ${describe(v)}`);
+  }
+  if (len !== undefined && v.length !== len) {
+    throw new Error(`${fn}: ${arg} must be exactly ${len} bytes, got ${v.length}`);
+  }
+}
+
 function wrapSig(scheme, name) {
+  const L = SIG_LENGTHS[name];
   return {
     name,
     // keygen(seed?) -> { publicKey, secretKey }. seed is a 32-byte ML-DSA xi.
-    keygen: (seed) => scheme.keygen(seed),
+    keygen: (seed) => {
+      if (seed !== undefined) requireBytes(`${name}.keygen`, 'seed', seed, L.seed);
+      return scheme.keygen(seed);
+    },
     // sign(secretKey, message, opts?) -> signature  (conventional arg order)
     //
     // DETERMINISTIC (FIPS-204 §3.4) by default — same (secretKey, message)
@@ -25,19 +56,46 @@ function wrapSig(scheme, name) {
     // deterministic signatures, so this default is consensus-critical: do not
     // change it. Pass { hedged: true } to opt in to randomized signing for
     // non-chain uses that want side-channel hedging.
-    sign: (secretKey, message, opts = {}) => opts.hedged === true
-      ? scheme.sign(message, secretKey) // noble's default: hedged (random rnd)
-      : scheme.sign(message, secretKey, { extraEntropy: false }),
-    // verify(publicKey, message, signature) -> boolean
-    verify: (publicKey, message, signature) => scheme.verify(signature, message, publicKey),
+    sign: (secretKey, message, opts = {}) => {
+      requireBytes(`${name}.sign`, 'secretKey', secretKey, L.secretKey);
+      requireBytes(`${name}.sign`, 'message', message);
+      return opts && opts.hedged === true
+        ? scheme.sign(message, secretKey) // noble's default: hedged (random rnd)
+        : scheme.sign(message, secretKey, { extraEntropy: false });
+    },
+    // verify(publicKey, message, signature) -> boolean. Never throws: any
+    // malformed input (wrong-length key or signature, non-byte message, …) is
+    // simply not a valid signature, so it returns false.
+    verify: (publicKey, message, signature) => {
+      if (!isBytes(publicKey) || publicKey.length !== L.publicKey) return false;
+      if (!isBytes(signature) || signature.length !== L.signature) return false;
+      if (!isBytes(message)) return false;
+      try {
+        return scheme.verify(signature, message, publicKey) === true;
+      } catch {
+        return false;
+      }
+    },
   };
 }
 function wrapKem(scheme, name) {
+  const L = KEM_LENGTHS[name];
   return {
     name,
-    keygen: (seed) => scheme.keygen(seed),
-    encapsulate: (publicKey) => scheme.encapsulate(publicKey),
-    decapsulate: (secretKey, cipherText) => scheme.decapsulate(cipherText, secretKey),
+    // keygen(seed?) -> { publicKey, secretKey }. seed is the 64-byte d ‖ z.
+    keygen: (seed) => {
+      if (seed !== undefined) requireBytes(`${name}.keygen`, 'seed', seed, L.seed);
+      return scheme.keygen(seed);
+    },
+    encapsulate: (publicKey) => {
+      requireBytes(`${name}.encapsulate`, 'publicKey', publicKey, L.publicKey);
+      return scheme.encapsulate(publicKey);
+    },
+    decapsulate: (secretKey, cipherText) => {
+      requireBytes(`${name}.decapsulate`, 'secretKey', secretKey, L.secretKey);
+      requireBytes(`${name}.decapsulate`, 'cipherText', cipherText, L.cipherText);
+      return scheme.decapsulate(cipherText, secretKey);
+    },
   };
 }
 
@@ -74,12 +132,26 @@ export function pubkeyHash(publicKey, len = 20) { return shake256(publicKey, len
 //
 // v2's domain tag keeps a signature the key made in another context from being
 // valid transaction sign-bytes; the chain-id keeps it from verifying on another
-// network. Networks that existed before chain release v3.1.98 verify v1 until
-// that upgrade is applied on them (signBytesVersionFor). This library is pure:
-// asking a network for its applied height is left to the caller.
+// network.
+//
+// The two networks that existed before v2 (qorechain-vladi, qorechain-diana)
+// verify v1 until a switching upgrade is applied on them, v2 afterwards; every
+// other chain verifies v2 from genesis. The switch has shipped under TWO plan
+// names: testnet took it as "v3.1.98" and mainnet as "v3.2.0", and each network
+// keeps its record forever. Ask the network for every name in
+// SIGN_BYTES_V2_UPGRADES and pass the answers to signBytesVersionForApplied.
+// This library is pure: asking a network for its applied heights is left to the
+// caller.
 export const HYBRID_SIGN_BYTES_V2_DOMAIN = 'qorechain-pqc-hybrid-v2';
 export const HYBRID_SIGN_BYTES_DOMAIN = HYBRID_SIGN_BYTES_V2_DOMAIN;
-export const SIGN_BYTES_V2_UPGRADE = 'v3.1.98';
+// Every upgrade-plan name that switched a network to v2, newest first. Mirror of
+// the chain's x/pqc/types.SignBytesV2Upgrades.
+export const SIGN_BYTES_V2_UPGRADES = Object.freeze(['v3.2.0', 'v3.1.98']);
+// DEPRECATED: the primary (newest) name only. A network may have taken the
+// switch under any name in SIGN_BYTES_V2_UPGRADES (testnet applied "v3.1.98",
+// mainnet "v3.2.0"); querying only this one misreads testnet as not switched.
+// Use SIGN_BYTES_V2_UPGRADES with signBytesVersionForApplied.
+export const SIGN_BYTES_V2_UPGRADE = 'v3.2.0';
 export const LEGACY_SIGN_BYTES_CHAINS = Object.freeze(['qorechain-vladi', 'qorechain-diana']);
 
 const be32 = (n) => { const b = new Uint8Array(4); new DataView(b.buffer).setUint32(0, n >>> 0, false); return b; };
@@ -90,7 +162,7 @@ const concat = (parts) => {
   return out;
 };
 
-// Legacy v1 form, kept for networks that have not applied v3.1.98.
+// Legacy v1 form, kept for networks that have not applied any of SIGN_BYTES_V2_UPGRADES.
 export function hybridSignBytesV1(bodyWithoutPqcExt, authInfoBytes) {
   return concat([be32(bodyWithoutPqcExt.length), bodyWithoutPqcExt, be32(authInfoBytes.length), authInfoBytes]);
 }
@@ -112,25 +184,47 @@ export function hybridSignBytes(version, chainId, bodyWithoutPqcExt, authInfoByt
   throw new Error(`hybridSignBytes: version must be 'v1' or 'v2', got ${JSON.stringify(version)} (signature is hybridSignBytes(version, chainId, b0, authInfo))`);
 }
 
-// The form a client must sign for chainId, given the height at which the v3.1.98
-// plan was applied on it (0 / "0" / null = not applied). Mirrors the chain's
-// SignBytesVersionFor. Compared numerically: nodes return the height as a
-// string, and "0" is truthy.
+// Parses an applied height as returned by a node (number, numeric string,
+// bigint; 0 / "0" / "" / null / undefined = not applied).
+function toHeight(v) {
+  if (v === undefined || v === null || v === '') return 0n;
+  return BigInt(typeof v === 'number' ? Math.trunc(v) : v);
+}
+
+// The form a client must sign for chainId, given the height at which the switch
+// to v2 was applied on it (0 / "0" / null = not applied) — already the greatest
+// height across SIGN_BYTES_V2_UPGRADES; prefer signBytesVersionForApplied, which
+// computes it. Mirrors the chain's SignBytesVersionFor. Compared numerically:
+// nodes return the height as a string, and "0" is truthy.
 export function signBytesVersionFor(chainId, v2AppliedHeight) {
-  const h = v2AppliedHeight === undefined || v2AppliedHeight === null || v2AppliedHeight === ''
-    ? 0n : BigInt(typeof v2AppliedHeight === 'number' ? Math.trunc(v2AppliedHeight) : v2AppliedHeight);
-  if (h > 0n) return 'v2';
+  if (toHeight(v2AppliedHeight) > 0n) return 'v2';
   return LEGACY_SIGN_BYTES_CHAINS.includes(chainId) ? 'v1' : 'v2';
+}
+
+// signBytesVersionFor over every known upgrade name. appliedHeights maps a plan
+// name to the height at which the network applied it (absent / 0 / "0" = not
+// applied), as an object or a Map; the greatest height across
+// SIGN_BYTES_V2_UPGRADES decides and other names are ignored. Mirrors the
+// chain's SignBytesVersionForApplied.
+export function signBytesVersionForApplied(chainId, appliedHeights) {
+  const get = (n) => (appliedHeights instanceof Map ? appliedHeights.get(n)
+    : appliedHeights && Object.prototype.hasOwnProperty.call(appliedHeights, n) ? appliedHeights[n] : undefined);
+  let best = 0n;
+  for (const name of SIGN_BYTES_V2_UPGRADES) {
+    const h = toHeight(get(name));
+    if (h > best) best = h;
+  }
+  return signBytesVersionFor(chainId, best);
 }
 
 // batchVerify: verify many (publicKey, message, signature) triples; returns the
 // index of the first failure, or -1 if all valid.
 export function batchVerify(scheme, items) {
   for (let i = 0; i < items.length; i++) {
-    const { publicKey, message, signature } = items[i];
+    const { publicKey, message, signature } = items[i] ?? {};
     if (scheme.verify(publicKey, message, signature) !== true) return i;
   }
   return -1;
 }
 
-export const VERSION = '0.2.0';
+export const VERSION = '0.2.1';

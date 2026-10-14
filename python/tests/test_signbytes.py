@@ -9,7 +9,8 @@ with open(os.path.join(os.path.dirname(__file__), "..", "..", "vectors", "signby
 class SignBytes(unittest.TestCase):
     def test_constants(self):
         self.assertEqual(pqc.HYBRID_SIGN_BYTES_DOMAIN.decode(), KAT["hybrid_domain"])
-        self.assertEqual(pqc.SIGN_BYTES_V2_UPGRADE, "v3.1.98")
+        self.assertEqual(tuple(pqc.SIGN_BYTES_V2_UPGRADES), ("v3.2.0", "v3.1.98"))
+        self.assertEqual(pqc.SIGN_BYTES_V2_UPGRADE, "v3.2.0")
         self.assertEqual(tuple(pqc.LEGACY_SIGN_BYTES_CHAINS), ("qorechain-vladi", "qorechain-diana"))
 
     def test_hybrid_v2_kat(self):
@@ -36,6 +37,28 @@ class SignBytes(unittest.TestCase):
                 self.assertEqual(pqc.sign_bytes_version_for(c, h), "v2")
         self.assertEqual(pqc.sign_bytes_version_for("qorechain-other", 0), "v2")
         self.assertEqual(pqc.sign_bytes_version_for("qorechain-other", "5746000"), "v2")
+
+    def test_version_for_applied(self):
+        for c in ("qorechain-vladi", "qorechain-diana"):
+            # only v3.2.0 applied -> v2
+            self.assertEqual(pqc.sign_bytes_version_for_applied(c, {"v3.2.0": "2981742"}), "v2")
+            self.assertEqual(pqc.sign_bytes_version_for_applied(c, {"v3.2.0": 2981742, "v3.1.98": "0"}), "v2")
+            # only v3.1.98 applied -> v2
+            self.assertEqual(pqc.sign_bytes_version_for_applied(c, {"v3.1.98": "5746000"}), "v2")
+            self.assertEqual(pqc.sign_bytes_version_for_applied(c, {"v3.2.0": "0", "v3.1.98": 5746000}), "v2")
+            # neither -> v1 on the legacy networks
+            self.assertEqual(pqc.sign_bytes_version_for_applied(c, {"v3.2.0": "0", "v3.1.98": "0"}), "v1")
+            self.assertEqual(pqc.sign_bytes_version_for_applied(c, {}), "v1")
+            self.assertEqual(pqc.sign_bytes_version_for_applied(c, None), "v1")
+            self.assertEqual(pqc.sign_bytes_version_for_applied(c, {"v9.9.9": 100}), "v1")
+        # neither -> v2 elsewhere
+        self.assertEqual(pqc.sign_bytes_version_for_applied("qorechain-other", {}), "v2")
+        self.assertEqual(pqc.sign_bytes_version_for_applied("qorechain-other", {"v3.2.0": 1}), "v2")
+
+    def test_v2_refuses_empty_chain_id(self):
+        with self.assertRaises(ValueError):
+            pqc.hybrid_sign_bytes("v2", "", b"\x01", b"\x02")
+        self.assertEqual(pqc.hybrid_sign_bytes("v1", "", b"\x01", b"\x02"), bytes([0, 0, 0, 1, 1, 0, 0, 0, 1, 2]))
 
     def test_v2_signature_does_not_verify_over_v1(self):
         pk, sk = pqc.mldsa.keygen()

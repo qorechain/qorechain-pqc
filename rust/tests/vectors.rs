@@ -110,8 +110,10 @@ fn sign_hedged_optin_differs_and_verifies() {
 // ── hybrid sign-bytes v1 / v2 (chain v3.1.98 KAT) ──────────────────────────────
 use qorechain_pqc::{
     hybrid_sign_bytes, hybrid_sign_bytes_v1, hybrid_sign_bytes_v2, sign_bytes_version_for,
-    SignBytesVersion, HYBRID_SIGN_BYTES_DOMAIN,
+    sign_bytes_version_for_applied, try_hybrid_sign_bytes, try_hybrid_sign_bytes_v2,
+    SignBytesVersion, HYBRID_SIGN_BYTES_DOMAIN, SIGN_BYTES_V2_UPGRADE, SIGN_BYTES_V2_UPGRADES,
 };
+use std::collections::HashMap;
 
 #[test]
 fn hybrid_v2_kat() {
@@ -173,4 +175,55 @@ fn v2_signature_does_not_verify_over_v1() {
     let sig = qorechain_pqc::mldsa::default::sign(&sk, &v2).unwrap();
     assert!(qorechain_pqc::mldsa::default::verify(&pk, &v2, &sig));
     assert!(!qorechain_pqc::mldsa::default::verify(&pk, &v1, &sig));
+}
+
+#[test]
+fn sign_bytes_upgrade_names() {
+    assert_eq!(SIGN_BYTES_V2_UPGRADES, ["v3.2.0", "v3.1.98"]);
+    assert_eq!(SIGN_BYTES_V2_UPGRADE, "v3.2.0");
+}
+
+#[test]
+fn sign_bytes_version_for_applied_truth_table() {
+    let m = |pairs: &[(&'static str, i64)]| -> HashMap<&'static str, i64> {
+        pairs.iter().copied().collect()
+    };
+    for c in ["qorechain-vladi", "qorechain-diana"] {
+        // only v3.2.0 applied -> v2
+        let only_new = m(&[("v3.2.0", 2_981_742), ("v3.1.98", 0)]);
+        assert_eq!(sign_bytes_version_for_applied(c, &only_new), SignBytesVersion::V2);
+        let only_new = m(&[("v3.2.0", 2_981_742)]);
+        assert_eq!(sign_bytes_version_for_applied(c, &only_new), SignBytesVersion::V2);
+        // only v3.1.98 applied -> v2
+        let only_old = m(&[("v3.1.98", 5_746_000)]);
+        assert_eq!(sign_bytes_version_for_applied(c, &only_old), SignBytesVersion::V2);
+        // neither -> v1 on the legacy networks
+        let neither = m(&[("v3.2.0", 0), ("v3.1.98", 0)]);
+        assert_eq!(sign_bytes_version_for_applied(c, &neither), SignBytesVersion::V1);
+        assert_eq!(sign_bytes_version_for_applied(c, &m(&[])), SignBytesVersion::V1);
+        let unknown = m(&[("v9.9.9", 100)]);
+        assert_eq!(sign_bytes_version_for_applied(c, &unknown), SignBytesVersion::V1);
+    }
+    // neither -> v2 elsewhere; String keys work too
+    let owned: HashMap<String, i64> = HashMap::new();
+    assert_eq!(sign_bytes_version_for_applied("qorechain-other", &owned), SignBytesVersion::V2);
+    let owned: HashMap<String, i64> = [("v3.1.98".to_string(), 7)].into_iter().collect();
+    assert_eq!(sign_bytes_version_for_applied("qorechain-diana", &owned), SignBytesVersion::V2);
+}
+
+#[test]
+fn hybrid_v2_refuses_empty_chain_id() {
+    assert!(try_hybrid_sign_bytes_v2("", &[1], &[2]).is_err());
+    assert!(try_hybrid_sign_bytes(SignBytesVersion::V2, "", &[1], &[2]).is_err());
+    assert_eq!(
+        try_hybrid_sign_bytes(SignBytesVersion::V1, "", &[1], &[2]).unwrap(),
+        vec![0, 0, 0, 1, 1, 0, 0, 0, 1, 2]
+    );
+    assert_eq!(
+        try_hybrid_sign_bytes_v2("qorechain-vladi", &[1], &[2]).unwrap(),
+        hybrid_sign_bytes_v2("qorechain-vladi", &[1], &[2])
+    );
+    assert!(std::panic::catch_unwind(|| hybrid_sign_bytes_v2("", &[1], &[2])).is_err());
+    let r = std::panic::catch_unwind(|| hybrid_sign_bytes(SignBytesVersion::V2, "", &[1], &[2]));
+    assert!(r.is_err());
 }
