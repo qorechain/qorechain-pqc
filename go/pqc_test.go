@@ -142,8 +142,8 @@ type sigVecFull struct {
 	} `json:"cases"`
 }
 
-// QoreChain's PQC ante verifier accepts only DETERMINISTIC (FIPS-204 section 3.4)
-// ML-DSA signatures: Sign must reproduce the shared vectors byte-for-byte.
+// Sign is DETERMINISTIC (FIPS-204 section 3.4): it must reproduce the shared
+// vectors byte-for-byte. (The chain accepts hedged signatures too.)
 func TestMLDSASignDeterministicVectors(t *testing.T) {
 	for _, tc := range []struct {
 		file string

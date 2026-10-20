@@ -21,9 +21,9 @@ npm install @qorechain/pqc
 ```js
 import { mldsa, mlkem, shake256, pubkeyHash } from '@qorechain/pqc';
 
-// ML-DSA-87 signatures — DETERMINISTIC by default (FIPS-204 §3.4), as required
-// by QoreChain's on-chain PQC verifier. Pass { hedged: true } for randomized
-// signing in non-chain contexts.
+// ML-DSA-87 signatures — DETERMINISTIC by default (FIPS-204 §3.4), reproducible
+// against the shared vectors. Pass { hedged: true } for randomized signing; the
+// chain accepts both.
 const { publicKey, secretKey } = mldsa.keygen();
 const sig = mldsa.sign(secretKey, message);
 mldsa.verify(publicKey, message, sig); // true

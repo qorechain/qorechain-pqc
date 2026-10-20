@@ -20,14 +20,14 @@ for (const [name, scheme] of [['ml-dsa-44', pqc.mldsa44], ['ml-dsa-65', pqc.mlds
     }
   });
 
-  // Regression: QoreChain's PQC ante verifier accepts only DETERMINISTIC
-  // (FIPS-204 §3.4) signatures — sign() must reproduce the shared vectors
-  // byte-for-byte, not emit hedged/randomized signatures.
+  // Regression: sign() is DETERMINISTIC (FIPS-204 §3.4) by default — it must
+  // reproduce the shared vectors byte-for-byte, not emit hedged/randomized
+  // signatures. (The chain accepts both; the default is about reproducibility.)
   test(`${name}: sign() is deterministic and reproduces shared vectors`, () => {
     for (const c of load(`${name}.json`).cases) {
       const { secretKey } = scheme.keygen(hb(c.seed));
       assert.equal(hx(scheme.sign(secretKey, hb(c.message))), c.signature,
-        'sign(secretKey, message) must reproduce the chain-verified deterministic signature');
+        'sign(secretKey, message) must reproduce the shared deterministic signature');
     }
   });
 }

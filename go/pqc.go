@@ -85,8 +85,8 @@ func (sc SigScheme) KeygenFromSeed(seed []byte) (pub, sec []byte, err error) {
 
 // Sign signs message with secretKey (empty context, FIPS-204 pure).
 // DETERMINISTIC (FIPS-204 section 3.4): same (secretKey, message) always yields
-// the same signature — required by QoreChain's on-chain PQC verifier, and how
-// the shared /vectors are generated.
+// the same signature, which is how the shared /vectors are generated.
+// QoreChain's on-chain PQC verifier accepts hedged signatures equally.
 func (sc SigScheme) Sign(secretKey, message []byte) ([]byte, error) {
 	sk, err := sc.s.UnmarshalBinaryPrivateKey(secretKey)
 	if err != nil {

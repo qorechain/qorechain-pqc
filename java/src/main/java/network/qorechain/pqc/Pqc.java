@@ -185,9 +185,9 @@ public final class Pqc {
      *
      * <p>DETERMINISTIC (FIPS-204 §3.4): the same (secretKey, message) always yields
      * the same signature, matching every other language binding and the shared
-     * {@code /vectors}. QoreChain's on-chain PQC verifier accepts ONLY deterministic
-     * signatures, so this default is consensus-critical: do not change it. Use
-     * {@link #mldsaSignHedged} for randomized signing in non-chain contexts.
+     * {@code /vectors}. QoreChain's on-chain PQC verifier accepts any valid FIPS-204
+     * signature, hedged or deterministic. Use {@link #mldsaSignHedged} for
+     * randomized signing, which the chain accepts equally.
      *
      * @throws IllegalArgumentException if {@code level} is null or unknown,
      *     {@code secretKey} is null or not exactly the 32-byte seed (an expanded
@@ -210,8 +210,8 @@ public final class Pqc {
     }
 
     /**
-     * Randomized (hedged) signing per FIPS-204 — NOT accepted by QoreChain's
-     * on-chain verifier; opt-in for non-chain uses.
+     * Randomized (hedged) signing per FIPS-204 — accepted by QoreChain's
+     * on-chain verifier like {@link #mldsaSign}; not reproducible.
      *
      * @throws IllegalArgumentException under the same conditions as {@link #mldsaSign}
      */

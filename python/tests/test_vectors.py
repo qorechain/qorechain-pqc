@@ -12,8 +12,8 @@ class Vectors(unittest.TestCase):
             for c in load(f"{lvl}.json")["cases"]:
                 self.assertTrue(s.verify(hb(c["publicKey"]), hb(c["message"]), hb(c["signature"])), lvl)
     def test_mldsa_sign_deterministic(self):
-        # QoreChain's PQC ante verifier accepts only DETERMINISTIC (FIPS-204
-        # §3.4) signatures: sign must reproduce the shared vectors byte-for-byte.
+        # sign is DETERMINISTIC (FIPS-204 §3.4) by default: it must reproduce the
+        # shared vectors byte-for-byte. (The chain accepts hedged signatures too.)
         for lvl in ("ml-dsa-44", "ml-dsa-65", "ml-dsa-87"):
             s = pqc.MlDsa(lvl)
             for c in load(f"{lvl}.json")["cases"]:

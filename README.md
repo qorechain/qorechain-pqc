@@ -112,11 +112,12 @@ expanded secret key where it expects its 32-byte seed (see the
 
 > **`sign` is DETERMINISTIC (FIPS-204 §3.4) in every binding** — the same
 > `(secretKey, message)` always yields the same signature, byte-identical across
-> languages and to the shared `/vectors`. QoreChain's on-chain PQC verifier
-> accepts only deterministic signatures, so this default is consensus-critical.
-> Randomized (hedged) signing is available as an explicit opt-in per binding
+> languages and to the shared `/vectors`. QoreChain's chain verifies any valid
+> FIPS-204 ML-DSA signature, hedged or deterministic; the deterministic default
+> keeps signatures reproducible against the test vectors. Randomized (hedged)
+> signing is available as an explicit opt-in per binding
 > (`{hedged: true}` / `sign_hedged` / `mldsaSignHedged` / `qpqc_mldsa_sign_hedged`)
-> for non-chain uses. (The liboqs-backed C and Python bindings have no seeded
+> and is equally accepted by the chain. (The liboqs-backed C and Python bindings have no seeded
 > keygen; their vector tests use the expanded `secretKey` field instead.)
 
 ### Quick start

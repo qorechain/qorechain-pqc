@@ -52,10 +52,10 @@ function wrapSig(scheme, name) {
     //
     // DETERMINISTIC (FIPS-204 §3.4) by default — same (secretKey, message)
     // always yields the same signature, matching every other language binding
-    // and the shared /vectors. QoreChain's on-chain PQC verifier accepts ONLY
-    // deterministic signatures, so this default is consensus-critical: do not
-    // change it. Pass { hedged: true } to opt in to randomized signing for
-    // non-chain uses that want side-channel hedging.
+    // and the shared /vectors. QoreChain's on-chain PQC verifier accepts any
+    // valid FIPS-204 signature, hedged or deterministic; the default keeps
+    // signatures reproducible. Pass { hedged: true } to opt in to randomized
+    // (hedged) signing, which the chain accepts equally.
     sign: (secretKey, message, opts = {}) => {
       requireBytes(`${name}.sign`, 'secretKey', secretKey, L.secretKey);
       requireBytes(`${name}.sign`, 'message', message);

@@ -37,8 +37,8 @@ int main(int argc, char **argv) {
             size_t pkl = unhex(h1, a, sizeof a), ml = unhex(h2, b, sizeof b), sl = unhex(h3, c, sizeof c);
             int r = qpqc_mldsa_verify(alg, a, pkl, b, ml, c, sl);
             total++; if (r == 1) pass++; else fprintf(stderr, "FAIL %s verify\n", alg);
-            /* QoreChain's PQC ante verifier accepts only DETERMINISTIC (FIPS-204
-             * section 3.4) signatures: sign must reproduce the vector byte-for-byte. */
+            /* sign is DETERMINISTIC (FIPS-204 section 3.4) by default: it must
+             * reproduce the vector byte-for-byte. */
             size_t skl = unhex(h4, d, sizeof d);
             uint8_t *sig2 = NULL; size_t sl2 = 0;
             int rs = qpqc_mldsa_sign(alg, d, skl, b, ml, &sig2, &sl2);

@@ -24,9 +24,9 @@ import oqs.rand as _oqs_rand
 __version__ = "0.2.1"
 
 # liboqs's ML-DSA signs hedged: it draws the 32-byte FIPS-204 `rnd` from
-# OQS_randombytes. QoreChain's on-chain PQC verifier accepts ONLY the
-# DETERMINISTIC variant (rnd = 32 zero bytes), matching the shared /vectors and
-# every other language binding — so MlDsa.sign routes liboqs's RNG to a zero
+# OQS_randombytes. This binding signs DETERMINISTICALLY by default (rnd = 32
+# zero bytes) so signatures match the shared /vectors and every other language
+# binding — so MlDsa.sign routes liboqs's RNG to a zero
 # filler for the duration of the sign call, then restores the system RNG.
 # The RNG switch is process-global in liboqs, so every operation of this module
 # that draws randomness (keygen, encapsulation, hedged signing) takes the same
@@ -103,10 +103,10 @@ class MlDsa:
 
         DETERMINISTIC (FIPS-204 §3.4) by default: the same (secret_key, message)
         always yields the same signature, matching every other language binding
-        and the shared /vectors. QoreChain's on-chain PQC verifier accepts ONLY
-        deterministic signatures, so this default is consensus-critical: do not
-        change it. Pass ``hedged=True`` for randomized signing in non-chain
-        contexts (NOT accepted by the chain).
+        and the shared /vectors. QoreChain's on-chain PQC verifier accepts any
+        valid FIPS-204 signature, hedged or deterministic. Pass ``hedged=True``
+        for randomized signing (equally accepted by the chain; not
+        reproducible).
 
         Raises ValueError if ``secret_key`` is not exactly the expanded secret-key
         size for this level or ``message`` is not bytes.

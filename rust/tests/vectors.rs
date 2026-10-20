@@ -72,9 +72,9 @@ fn roundtrip_and_helpers() {
     assert_eq!(ss1, ss2);
 }
 
-// QoreChain's PQC ante verifier accepts only DETERMINISTIC (FIPS-204 §3.4)
-// ML-DSA signatures: sign() must reproduce the shared vectors byte-for-byte,
-// and keygen_from_seed must reproduce the vector keypair.
+// sign() is DETERMINISTIC (FIPS-204 §3.4) by default (the chain accepts hedged
+// signatures too): it must reproduce the shared vectors byte-for-byte, and
+// keygen_from_seed must reproduce the vector keypair.
 macro_rules! sig_deterministic_vectors {
     ($test:ident, $file:expr, $level:path) => {
         #[test]

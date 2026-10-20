@@ -30,11 +30,11 @@ int qpqc_mldsa_keygen(const char *alg, uint8_t **pk, size_t *pk_len, uint8_t **s
 }
 
 /* liboqs's ML-DSA signs hedged: it draws the 32-byte FIPS-204 `rnd` from
- * OQS_randombytes. QoreChain's on-chain PQC verifier accepts ONLY the
- * DETERMINISTIC variant (rnd = 32 zero bytes), matching the shared /vectors
- * and every other language binding — so qpqc_mldsa_sign routes OQS_randombytes
- * to a zero filler for the duration of the sign call, then restores the system
- * RNG. This default is consensus-critical: do not change it.
+ * OQS_randombytes. This binding signs DETERMINISTICALLY by default (rnd = 32
+ * zero bytes), matching the shared /vectors and every other language binding —
+ * so qpqc_mldsa_sign routes OQS_randombytes to a zero filler for the duration
+ * of the sign call, then restores the system RNG. QoreChain's on-chain verifier
+ * accepts hedged and deterministic signatures alike.
  *
  * The RNG switch is process-global in liboqs, so this call and every other
  * randomness consumer in this file serialise on qpqc_rng_lock. */
@@ -56,8 +56,8 @@ int qpqc_mldsa_sign(const char *alg, const uint8_t *sk, size_t sk_len,
     return rc;
 }
 
-/* Randomized (hedged) signing per FIPS-204 — NOT accepted by QoreChain's
- * on-chain verifier; opt-in for non-chain uses. */
+/* Randomized (hedged) signing per FIPS-204 — accepted by QoreChain's
+ * on-chain verifier like qpqc_mldsa_sign; not reproducible. */
 int qpqc_mldsa_sign_hedged(const char *alg, const uint8_t *sk, size_t sk_len,
                            const uint8_t *msg, size_t msg_len, uint8_t **sig, size_t *sig_len) {
     OQS_SIG *s = OQS_SIG_new(alg);

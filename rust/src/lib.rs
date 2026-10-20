@@ -233,10 +233,10 @@ pub mod mldsa {
                 /// DETERMINISTIC (FIPS-204 §3.4): same `(secret_key, message)`
                 /// always yields the same signature, matching every other
                 /// language binding and the shared `/vectors`. QoreChain's
-                /// on-chain PQC verifier accepts ONLY deterministic signatures,
-                /// so this default is consensus-critical: do not change it.
-                /// Use [`sign_hedged`] for randomized signatures in non-chain
-                /// contexts.
+                /// on-chain PQC verifier accepts any valid FIPS-204 signature,
+                /// hedged or deterministic; the default keeps signatures
+                /// reproducible. Use [`sign_hedged`] for randomized signatures,
+                /// which the chain accepts equally.
                 pub fn sign(secret_key: &[u8], message: &[u8]) -> Result<Vec<u8>, &'static str> {
                     let arr: [u8; SECRET_KEY_LEN] =
                         secret_key.try_into().map_err(|_| "bad secret key length")?;
@@ -248,8 +248,8 @@ pub mod mldsa {
                     Ok(sig.to_vec())
                 }
 
-                /// Randomized (hedged) signing per FIPS-204 — NOT accepted by
-                /// QoreChain's on-chain verifier; opt-in for non-chain uses.
+                /// Randomized (hedged) signing per FIPS-204 — accepted by
+                /// QoreChain's on-chain verifier like [`sign`]; not reproducible.
                 pub fn sign_hedged(secret_key: &[u8], message: &[u8]) -> Result<Vec<u8>, &'static str> {
                     let arr: [u8; SECRET_KEY_LEN] =
                         secret_key.try_into().map_err(|_| "bad secret key length")?;
