@@ -27,7 +27,7 @@ import (
 	"golang.org/x/crypto/sha3"
 )
 
-const Version = "0.2.1"
+const Version = "0.2.2"
 
 // SigScheme is a unified ML-DSA signature scheme handle.
 type SigScheme struct {

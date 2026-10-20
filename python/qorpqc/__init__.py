@@ -21,7 +21,7 @@ import threading
 import oqs  # liboqs-python
 import oqs.rand as _oqs_rand
 
-__version__ = "0.2.1"
+__version__ = "0.2.2"
 
 # liboqs's ML-DSA signs hedged: it draws the 32-byte FIPS-204 `rnd` from
 # OQS_randombytes. This binding signs DETERMINISTICALLY by default (rnd = 32

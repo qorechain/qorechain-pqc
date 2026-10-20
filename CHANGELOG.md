@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.2.2] — 2026-10-20
+
+### Fixed
+
+- **Documentation: the chain accepts hedged ML-DSA signatures.** The docs and
+  comments said the chain's verifier accepts only deterministic signatures. It
+  verifies any valid FIPS-204 ML-DSA-87 signature, hedged or deterministic; the
+  node signs and verifies with the `fips204` crate. Deterministic signing stays
+  the default in every binding (reproducible against the vectors). No code
+  change.
+
 ## [0.2.1]
 
 ### Fixed
