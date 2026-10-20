@@ -23,7 +23,8 @@ import pqc "github.com/qorechain/qorechain-pqc/go"
 
 // ML-DSA-87 signatures
 pk, sk, _ := pqc.MLDSA.Keygen()
-sig, _ := pqc.MLDSA.Sign(sk, message)
+sig, _ := pqc.MLDSA.Sign(sk, message)          // deterministic (reproducible)
+hsig, _ := pqc.MLDSA.SignHedged(sk, message)   // hedged (randomized); the chain accepts both
 pqc.MLDSA.Verify(pk, message, sig) // true
 
 // ML-KEM-1024 key encapsulation

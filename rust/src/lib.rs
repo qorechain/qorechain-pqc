@@ -333,4 +333,4 @@ pub mod mlkem {
     pub use ml_kem_1024 as default;
 }
 
-pub const VERSION: &str = "0.2.2";
+pub const VERSION: &str = "0.2.3";

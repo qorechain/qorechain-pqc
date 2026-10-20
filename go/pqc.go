@@ -27,7 +27,7 @@ import (
 	"golang.org/x/crypto/sha3"
 )
 
-const Version = "0.2.2"
+const Version = "0.2.3"
 
 // SigScheme is a unified ML-DSA signature scheme handle.
 type SigScheme struct {
@@ -93,6 +93,38 @@ func (sc SigScheme) Sign(secretKey, message []byte) ([]byte, error) {
 		return nil, err
 	}
 	return sc.s.Sign(sk, message, nil), nil
+}
+
+// SignHedged signs message with secretKey using FIPS-204 hedged (randomized)
+// signing: each call draws fresh randomness, so the signature differs every
+// time. The chain verifies hedged and deterministic signatures alike; Sign
+// stays the default because its output is reproducible against the vectors.
+func (sc SigScheme) SignHedged(secretKey, message []byte) ([]byte, error) {
+	sig := make([]byte, sc.s.SignatureSize())
+	var err error
+	switch sc.Name {
+	case "ml-dsa-44":
+		var sk mldsa44.PrivateKey
+		if err = sk.UnmarshalBinary(secretKey); err == nil {
+			err = mldsa44.SignTo(&sk, message, nil, true, sig)
+		}
+	case "ml-dsa-65":
+		var sk mldsa65.PrivateKey
+		if err = sk.UnmarshalBinary(secretKey); err == nil {
+			err = mldsa65.SignTo(&sk, message, nil, true, sig)
+		}
+	case "ml-dsa-87":
+		var sk mldsa87.PrivateKey
+		if err = sk.UnmarshalBinary(secretKey); err == nil {
+			err = mldsa87.SignTo(&sk, message, nil, true, sig)
+		}
+	default:
+		err = fmt.Errorf("pqc: unknown scheme %q", sc.Name)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return sig, nil
 }
 
 // Verify checks signature over message under publicKey.

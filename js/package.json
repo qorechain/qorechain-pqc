@@ -1,6 +1,6 @@
 {
   "name": "@qorechain/pqc",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "QoreChain post-quantum cryptography — FIPS-204 ML-DSA, FIPS-203 ML-KEM, FIPS-202 SHAKE-256, with blockchain helpers. Byte-compatible across Rust/Go/Python/Java/C via shared test vectors.",
   "type": "module",
   "main": "src/index.js",
@@ -43,7 +43,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@noble/post-quantum": "^0.6.1",
+    "@noble/post-quantum": "^0.7.1",
     "@noble/hashes": "^2.0.0"
   },
   "engines": {

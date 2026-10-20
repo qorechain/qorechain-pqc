@@ -227,4 +227,4 @@ export function batchVerify(scheme, items) {
   return -1;
 }
 
-export const VERSION = '0.2.2';
+export const VERSION = '0.2.3';

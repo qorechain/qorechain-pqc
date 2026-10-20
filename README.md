@@ -116,7 +116,7 @@ expanded secret key where it expects its 32-byte seed (see the
 > FIPS-204 ML-DSA signature, hedged or deterministic; the deterministic default
 > keeps signatures reproducible against the test vectors. Randomized (hedged)
 > signing is available as an explicit opt-in per binding
-> (`{hedged: true}` / `sign_hedged` / `mldsaSignHedged` / `qpqc_mldsa_sign_hedged`)
+> (`{hedged: true}` / `sign_hedged` / `SignHedged` / `mldsaSignHedged` / `qpqc_mldsa_sign_hedged`)
 > and is equally accepted by the chain. (The liboqs-backed C and Python bindings have no seeded
 > keygen; their vector tests use the expanded `secretKey` field instead.)
 
@@ -152,6 +152,31 @@ FIPS reference). **Every binding's test suite verifies the same vectors**, so a
 JS-signed ML-DSA signature verifies in Rust/Go/C/Python/Java, ML-KEM shared
 secrets match across all six, and SHAKE-256 digests are identical. CI runs all of
 them on every change. Regenerate with `node scripts/gen-vectors.mjs`.
+
+Beyond the fixed vectors, hedged (randomized) signatures interoperate too: a
+signature made hedged in any of the six languages verifies in all six (checked
+for 0.2.3, 36 of 36 combinations).
+
+## Performance
+
+ML-DSA-87 on one core of an Apple-silicon laptop, 1.5 KB message (about the size
+of a transaction), mean of repeated runs, 0.2.3:
+
+| Language (backend) | keygen | sign | verify |
+|---|---|---|---|
+| C (liboqs) | 0.10 ms | 0.31 ms | 0.10 ms |
+| Python (liboqs) | 0.10 ms | 0.30 ms | 0.10 ms |
+| Go (CIRCL) | 0.15 ms | 0.30 ms | 0.14 ms |
+| Rust (`fips204`) | 0.18 ms | 0.29 ms | 0.13 ms |
+| Java (Bouncy Castle) | 0.17 ms | 0.45 ms | 0.14 ms |
+| JavaScript (`@noble/post-quantum`) | 1.8 ms | 7.9 ms | 2.1 ms |
+
+The JavaScript binding is pure JavaScript (no native code, no WebAssembly), so it
+runs anywhere, browsers included, at roughly 8 ms per signature: unnoticeable
+for a wallet signing a transaction. A server that signs or verifies thousands of
+signatures per second is better served by the Go, Rust, C or Python binding.
+Java expands its 32-byte seed on every `mldsaSign` call, which accounts for the
+small difference from the other native bindings.
 
 ## License
 

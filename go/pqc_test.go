@@ -204,3 +204,30 @@ func TestVerifyRejectsTrailingBytes(t *testing.T) {
 		t.Fatal("a truncated signature verified")
 	}
 }
+
+// Hedged signing: a fresh signature each call, every one valid, none equal
+// to the deterministic signature.
+func TestSignHedged(t *testing.T) {
+	for _, sc := range []SigScheme{MLDSA44, MLDSA65, MLDSA87} {
+		pub, sec, err := sc.KeygenFromSeed(make([]byte, 32))
+		if err != nil {
+			t.Fatal(err)
+		}
+		msg := []byte("qorechain hedged")
+		a, err := sc.SignHedged(sec, msg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := sc.SignHedged(sec, msg)
+		det, _ := sc.Sign(sec, msg)
+		if string(a) == string(b) || string(a) == string(det) {
+			t.Fatalf("%s: hedged signatures must differ from each other and from the deterministic one", sc.Name)
+		}
+		if !sc.Verify(pub, msg, a) || !sc.Verify(pub, msg, b) {
+			t.Fatalf("%s: hedged signature does not verify", sc.Name)
+		}
+		if _, err := sc.SignHedged([]byte{1, 2, 3}, msg); err == nil {
+			t.Fatalf("%s: a malformed secret key must be refused", sc.Name)
+		}
+	}
+}

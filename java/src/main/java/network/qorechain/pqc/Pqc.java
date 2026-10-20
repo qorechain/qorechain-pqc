@@ -35,7 +35,7 @@ import org.bouncycastle.pqc.crypto.mlkem.MLKEMPublicKeyParameters;
  * against the shared vectors in {@code /vectors}.
  */
 public final class Pqc {
-    public static final String VERSION = "0.2.2";
+    public static final String VERSION = "0.2.3";
 
     private Pqc() {}
 

@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.2.3] — 2026-10-21
+
+### Security
+
+- **Java: Bouncy Castle 1.79 → 1.85.** Versions before 1.85 carry published
+  advisories (critical and high), none in the ML-DSA / ML-KEM code this binding
+  calls, but dependency scanners flag them in every project that pulls the
+  binding in. 1.85 is the latest release that still ships the
+  `org.bouncycastle.pqc.crypto` classes, so projects that also use Bouncy
+  Castle at an earlier version (such as the QoreChain SDK for Java) keep
+  working whichever version their build resolves.
+
+### Changed
+
+- **JavaScript: `@noble/post-quantum` ^0.6.1 → ^0.7.1.** Brings upstream fixes
+  (an intermediate overflow in ML-KEM's NTT multiplication, ML-DSA signing draws
+  randomness before decoding the secret key, better zeroization). Output is
+  identical: every vector still reproduces byte for byte.
+
+### Added
+
+- **Go: `SigScheme.SignHedged`**, the hedged (randomized) signing the other five
+  bindings already offered. The chain accepts hedged and deterministic
+  signatures alike; `Sign` stays deterministic by default.
+- **README: performance table** for the six bindings, and the result of a
+  cross-language check: a hedged signature from any binding verifies in all six.
+
 ## [0.2.2] — 2026-10-20
 
 ### Fixed
