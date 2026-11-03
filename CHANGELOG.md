@@ -1,5 +1,14 @@
 # Changelog
 
+## [Unreleased]
+
+### Documentation
+
+- **Reserved QoreChain domain strings.** `DESIGN.md` lists the prefixes QoreChain
+  applications put in front of what they sign (transaction hybrid signature, proof of
+  possession, key derivation, login and off-chain messages), with the rule that each is
+  unique and none is a prefix of another.
+
 ## [0.2.3] — 2026-10-21
 
 ### Security

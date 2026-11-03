@@ -49,6 +49,27 @@ FIPS-204 libraries; it was replaced before mainnet launch (June 2026). The KEM
 (`pqcrypto-mlkem`, FIPS-203) and the hash (SHAKE-256, FIPS-202) are standard and
 interoperate.
 
+## Domain separation strings reserved by QoreChain
+
+This library signs and verifies raw bytes; it adds no prefix of its own. Applications
+that build on it for QoreChain put a domain string in front of what they sign, so that a
+signature made for one purpose can never be accepted for another. The strings below are
+in use or reserved. Two rules hold for the whole list: every string is unique, and no
+string is a prefix of another one.
+
+| String | Purpose | Used by |
+|---|---|---|
+| `qorechain-pqc-hybrid-v2` | transaction sign bytes for the hybrid (classical + ML-DSA-87) signature | chain (x/pqc) |
+| `qorechain-pqc-pop-v1\|` | proof of possession when a key is registered | chain (register-key-v2) |
+| `qorechain:pqc:v1\|` | default PQC key derivation from a wallet seed (SHAKE256) | wallet adapter, CLI |
+| `qorechain:pqc:recovery:v1` | key recovery | wallet adapter |
+| `qorechain-svm-auth-v2` | SVM (Solana-compatible) wallet authentication | wallet adapter (SVM lane currently off) |
+| `qorechain-siwq-v1\|` | sign-in with QoreChain (login) | QoreSign, QoreX |
+| `qorechain-msg-v1\|<chainID>\|` | general off-chain message signing (signArbitrary) | QoreX, SDK |
+
+If you sign anything for QoreChain that is not on this list, pick a new string, check it
+against both rules above, and ask for it to be added here before you ship.
+
 ## Vectors
 
 `vectors/*.json` (per algorithm) and `vectors/flat.txt` (line-based, for the C
